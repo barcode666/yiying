@@ -289,6 +289,42 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 // ============================================================
 // 全局状态 & 动画ID
 // ============================================================
+const PATH_THRESHOLD = 0.5;
+function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr) {
+    const nearX = Math.max(rx, Math.min(cx, rx + rw));
+    const nearY = Math.max(ry, Math.min(cy, ry + rh));
+    const dx = cx - nearX, dy = cy - nearY;
+    return dx * dx + dy * dy < cr * cr;
+}
+// 判断世界坐标 (wx, wy) 是否在草地上（即非黄土）
+function isGrass(wx, wy) {
+    const col = Math.floor(wx / TILE_SIZE);
+    const row = Math.floor(wy / TILE_SIZE);
+    // 必须与 drawScene 中的噪声计算完全一致
+    const v1 = Math.sin(row * 0.04 + col * 0.035) * Math.cos(row * 0.03 - col * 0.04);
+    const v2 = Math.sin(row * 0.09 + col * 0.08) * Math.cos(row * 0.07 - col * 0.06);
+    const v3 = Math.sin(row * 0.15 + col * 0.12) * Math.cos(row * 0.13 - col * 0.14);
+    let val = v1 * 1.0 + v2 * 0.6 + v3 * 0.3;
+    val += 0.2 * Math.sin(row * 0.011 + col * 0.023);
+    val += 0.2 * Math.cos(row * 0.019 - col * 0.017);
+    return val <= PATH_THRESHOLD; // 不大于阈值即为草地
+}
+// ---- 黄土判断参数（与绘制完全一致） ----
+let extraObjects = [];
+    const TILE_SIZE = 16;
+    const PATH_SPRITES = {
+    hollow: { sx: 0, sy: -1, sw: 48, sh: 48 },
+    slope:  { sx: 0, sy: 49, sw: 48, sh: 32 },
+    path:   { sx: 0, sy: 80, sw: 48, sh: 16 }
+};
+    // Cliff_Tile.png 的子图裁剪（48x96）
+const CLIFF_SPRITES = {
+    // 草坑：上半部分 (0,0) 到 (48,48)
+    hollow: { sx: 0, sy: 0, sw: 48, sh: 48 },
+   slope:  { sx: 0, sy: 48, sw: 48, sh: 32 },   // 草坡：中间 48x32
+    path:   { sx: 0, sy: 80, sw: 48, sh: 16 }    // 草路：最下 48x16
+};
+
 let animationId = null;
 const STATE = {
     player: { name: '无名旅者', stats: { 筋骨: 0, 智谋: 0, 体魄: 0 }, trait: null, traitLocked: true,job: '散人',           },
@@ -394,18 +430,18 @@ let trees = [];
 function generateTrees() {
     trees = [];
     const sx = WORLD_W / 2, sy = WORLD_H / 2;
-    const minDistToCenter = SPAWN_RADIUS;  // 200
-    const minDistToBuilding = 80;           // 建筑周围最小距离
-    const minDistToCampfire = 70;           // 篝火周围最小距离
+    const minDistToCenter = SPAWN_RADIUS;
+    const minDistToBuilding = 80;
 
-    // 收集所有障碍物（建筑 + 篝火）
+    // 建筑障碍物
     const obstacles = [];
     for (const b of BUILDINGS) {
-        // 使用建筑中心点作为障碍物位置
         obstacles.push({ x: b.x + b.w / 2, y: b.y + b.h / 2, radius: minDistToBuilding });
     }
-    // 添加篝火
-    obstacles.push({ x: campfire.x, y: campfire.y, radius: minDistToCampfire });
+
+    
+// 注意：右下白色方块 (24,48) 到 (48,96) 完全没有被引用，安全排除
+    const PATH_THRESHOLD = 0.5;  // 与绘制中的值保持一致
 
     let attempts = 0;
     const maxAttempts = 500;
@@ -416,10 +452,10 @@ function generateTrees() {
         let x = 60 + Math.random() * (WORLD_W - 120);
         let y = 60 + Math.random() * (WORLD_H - 120);
 
-        // 检查是否在中心出生点附近（避免挡住初始位置）
+        // 避开中央
         if (Math.sqrt((x - sx) ** 2 + (y - sy) ** 2) < minDistToCenter) continue;
 
-        // 检查是否与任何障碍物重叠
+        // 避开建筑
         let overlap = false;
         for (const obs of obstacles) {
             const dx = x - obs.x;
@@ -431,12 +467,23 @@ function generateTrees() {
         }
         if (overlap) continue;
 
-        // 通过所有检查，放置树木
+        // ---- 🌟 判断是否在黄土上（内嵌计算） ----
+        const treeCol = Math.floor(x / TILE_SIZE);
+        const treeRow = Math.floor(y / TILE_SIZE);
+        const v1 = Math.sin(treeRow * 0.04 + treeCol * 0.035) * Math.cos(treeRow * 0.03 - treeCol * 0.04);
+        const v2 = Math.sin(treeRow * 0.09 + treeCol * 0.08) * Math.cos(treeRow * 0.07 - treeCol * 0.06);
+        const v3 = Math.sin(treeRow * 0.15 + treeCol * 0.12) * Math.cos(treeRow * 0.13 - treeCol * 0.14);
+        let val = v1 * 1.0 + v2 * 0.6 + v3 * 0.3;
+        val += 0.2 * Math.sin(treeRow * 0.011 + treeCol * 0.023);
+        val += 0.2 * Math.cos(treeRow * 0.019 - treeCol * 0.017);
+        if (val > PATH_THRESHOLD) continue;  // 跳过黄土
+
+        // 放置树
         trees.push({ x, y, w: 64, h: 64, r: 10 });
         placed++;
     }
 
-    // 如果树木数量不足，补充一些到随机位置（但确保避开障碍物）
+    // 补充树木到至少 50 棵
     while (trees.length < 50) {
         let x = 60 + Math.random() * (WORLD_W - 120);
         let y = 60 + Math.random() * (WORLD_H - 120);
@@ -449,12 +496,401 @@ function generateTrees() {
                 break;
             }
         }
-        if (!overlap) {
-            trees.push({ x, y, w: 64, h: 64, r: 10 });
-        }
+        if (overlap) continue;
+
+        const treeCol = Math.floor(x / TILE_SIZE);
+        const treeRow = Math.floor(y / TILE_SIZE);
+        const v1 = Math.sin(treeRow * 0.04 + treeCol * 0.035) * Math.cos(treeRow * 0.03 - treeCol * 0.04);
+        const v2 = Math.sin(treeRow * 0.09 + treeCol * 0.08) * Math.cos(treeRow * 0.07 - treeCol * 0.06);
+        const v3 = Math.sin(treeRow * 0.15 + treeCol * 0.12) * Math.cos(treeRow * 0.13 - treeCol * 0.14);
+        let val = v1 * 1.0 + v2 * 0.6 + v3 * 0.3;
+        val += 0.2 * Math.sin(treeRow * 0.011 + treeCol * 0.023);
+        val += 0.2 * Math.cos(treeRow * 0.019 - treeCol * 0.017);
+        if (val > PATH_THRESHOLD) continue;
+
+        trees.push({ x, y, w: 64, h: 64, r: 10 });
     }
 }
+function generateExtraTerrain() {
+    // 清空旧数据
+    extraObjects = [];
 
+    const TILE = 16;
+    const WORLD_COLS = Math.floor(WORLD_W / TILE);
+    const WORLD_ROWS = Math.floor(WORLD_H / TILE);
+
+    // ---- 收集固定障碍（建筑和树木） ----
+    const fixedObstacles = [];
+    for (const b of BUILDINGS) {
+        fixedObstacles.push({ x: b.x, y: b.y, w: b.w, h: b.h });
+    }
+    for (const t of trees) {
+        fixedObstacles.push({ x: t.x - t.r, y: t.y - t.r, w: t.r * 2, h: t.r * 2 });
+    }
+
+    // ---- 辅助函数 ----
+    function isBlocked(x, y, w, h, obstacles) {
+        for (const obs of obstacles) {
+            if (x < obs.x + obs.w && x + w > obs.x &&
+                y < obs.y + obs.h && y + h > obs.y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function isAllGrass(x, y, w, h) {
+        const pts = [
+            [x + w/2, y + h/2],
+            [x + 2, y + 2],
+            [x + w - 2, y + 2],
+            [x + 2, y + h - 2],
+            [x + w - 2, y + h - 2]
+        ];
+        for (const [px, py] of pts) {
+            if (!isGrass(px, py)) return false;
+        }
+        return true;
+    }
+
+    // ---- 1. 草坑（5~8个），96x96 ----
+    const hollowCount = 5 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < hollowCount; i++) {
+        let placed = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const col = Math.floor(Math.random() * (WORLD_COLS - 6));
+            const row = Math.floor(Math.random() * (WORLD_ROWS - 6));
+            const x = col * TILE, y = row * TILE;
+            if (isAllGrass(x, y, 96, 96) && !isBlocked(x, y, 96, 96, fixedObstacles)) {
+    extraObjects.push({
+    type: 'hollow',
+    x, y, w: 96, h: 96,
+    collisionX: x + 24, collisionY: y + 30, collisionW: 48, collisionH: 42 
+});
+fixedObstacles.push({ x: x + 24, y: y + 24, w: 48, h: 48 });
+    placed = true;
+    break;
+}
+        }
+        if (!placed) console.warn('草坑生成失败');
+    }
+
+    // ---- 2. 草坡（3~5个），48x32 ----
+    const slopeCount = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < slopeCount; i++) {
+        let placed = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const col = Math.floor(Math.random() * (WORLD_COLS - 3));
+            const row = Math.floor(Math.random() * (WORLD_ROWS - 2));
+            const x = col * TILE, y = row * TILE;
+           if (isAllGrass(x, y, 48, 32) && !isBlocked(x, y, 48, 32, fixedObstacles)) {
+    extraObjects.push({
+        type: 'slope',
+        x, y, w: 48, h: 32,
+        collisionX: x + 12, collisionY: y + 11, collisionW: 24, collisionH: 12 
+    });
+    fixedObstacles.push({ x: x + 12, y: y + 8, w: 24, h: 16 });
+    placed = true;
+    break;
+}
+        }
+        if (!placed) console.warn('草坡生成失败');
+    }
+
+    // ---- 3. 草路（10~15条），48x16 ----
+    const pathCount = 10 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < pathCount; i++) {
+        let placed = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const col = Math.floor(Math.random() * (WORLD_COLS - 3));
+            const row = Math.floor(Math.random() * (WORLD_ROWS - 1));
+            const x = col * TILE, y = row * TILE;
+            if (isAllGrass(x, y, 48, 16) && !isBlocked(x, y, 48, 16, fixedObstacles)) {
+                extraObjects.push({ type: 'path', x, y, w: 48, h: 16 });
+                // 草路不加入障碍，允许重叠
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) console.warn('草路生成失败');
+    }
+
+    // ============================================================
+    // ---- 4. 聚合体阴影（大块 + 长条，占草地一半） ----
+    // ============================================================
+    // 辅助：检查单个块（48x16）是否可用（只检查位置，不检查 extraObjects）
+    function canPlaceBlockRaw(gx, gy, usedSet) {
+        const x = gx * TILE;
+        const y = gy * TILE;
+        if (gx < 0 || gx + 3 > WORLD_COLS || gy < 0 || gy + 1 > WORLD_ROWS) return false;
+        if (!isAllGrass(x, y, 48, 16)) return false;
+        if (isBlocked(x, y, 48, 16, fixedObstacles)) return false;
+        const key = `${gx},${gy}`;
+        if (usedSet && usedSet.has(key)) return false;
+        for (const obj of extraObjects) {
+            if (obj.type === 'path') {
+                if (x < obj.x + obj.w && x + 48 > obj.x &&
+                    y < obj.y + obj.h && y + 16 > obj.y) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // 收集边界点（草地-黄土交界）
+    const boundaryPoints = [];
+    for (let row = 0; row < WORLD_ROWS; row++) {
+        for (let col = 0; col < WORLD_COLS; col++) {
+            const cx = col * TILE + 8, cy = row * TILE + 8;
+            if (!isGrass(cx, cy)) continue;
+            let hasPath = false;
+            const neighbors = [[col-1,row],[col+1,row],[col,row-1],[col,row+1]];
+            for (const [nc, nr] of neighbors) {
+                if (nc < 0 || nc >= WORLD_COLS || nr < 0 || nr >= WORLD_ROWS) continue;
+                const nx = nc * TILE + 8, ny = nr * TILE + 8;
+                if (!isGrass(nx, ny)) { hasPath = true; break; }
+            }
+            if (hasPath) boundaryPoints.push({ gx: col, gy: row });
+        }
+    }
+    // 打乱
+    for (let i = boundaryPoints.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [boundaryPoints[i], boundaryPoints[j]] = [boundaryPoints[j], boundaryPoints[i]];
+    }
+
+    // 总目标块数
+    const totalGrassTiles = WORLD_COLS * WORLD_ROWS * 0.5;
+    const targetBlockCount = Math.floor(totalGrassTiles / 3);
+    let totalPlaced = 0;
+    let usedBoundaryIndex = 0;
+    const clusterCount = 18 + Math.floor(Math.random() * 11);
+
+    function growCluster(startGx, startGy, targetSize) {
+        const placedSet = new Set();
+        const blocks = [];
+        const queue = [{ gx: startGx, gy: startGy }];
+        if (!canPlaceBlockRaw(startGx, startGy, placedSet)) return blocks;
+        placedSet.add(`${startGx},${startGy}`);
+        blocks.push({ gx: startGx, gy: startGy, x: startGx * TILE, y: startGy * TILE });
+        let placed = 1;
+        while (placed < targetSize && queue.length > 0) {
+            const idx = Math.floor(Math.random() * queue.length);
+            const seed = queue[idx];
+            const dirs = [[0, -1], [0, 1], [-3, 0], [3, 0]];
+            const shuffled = dirs.sort(() => Math.random() - 0.5);
+            let placedInThisSeed = false;
+            for (const [dx, dy] of shuffled) {
+                const ngx = seed.gx + dx;
+                const ngy = seed.gy + dy;
+                const key = `${ngx},${ngy}`;
+                if (!placedSet.has(key) && canPlaceBlockRaw(ngx, ngy, placedSet)) {
+                    placedSet.add(key);
+                    blocks.push({ gx: ngx, gy: ngy, x: ngx * TILE, y: ngy * TILE });
+                    queue.push({ gx: ngx, gy: ngy });
+                    placed++;
+                    placedInThisSeed = true;
+                    break;
+                }
+            }
+            if (!placedInThisSeed) {
+                queue.splice(idx, 1);
+            }
+        }
+        return blocks;
+    }
+
+    // 生成聚合体并修剪
+    for (let i = 0; i < clusterCount && totalPlaced < targetBlockCount; i++) {
+        let startGx, startGy;
+        let found = false;
+        while (usedBoundaryIndex < boundaryPoints.length && !found) {
+            const pt = boundaryPoints[usedBoundaryIndex];
+            usedBoundaryIndex++;
+            if (canPlaceBlockRaw(pt.gx, pt.gy, null)) {
+                startGx = pt.gx;
+                startGy = pt.gy;
+                found = true;
+            }
+        }
+        if (!found) {
+            let attempts = 0;
+            while (!found && attempts < 100) {
+                attempts++;
+                const gx = 1 + Math.floor(Math.random() * (WORLD_COLS - 4));
+                const gy = 1 + Math.floor(Math.random() * (WORLD_ROWS - 2));
+                if (canPlaceBlockRaw(gx, gy, null)) {
+                    startGx = gx; startGy = gy; found = true;
+                }
+            }
+        }
+        if (!found) continue;
+
+        const size = 8 + Math.floor(Math.random() * 18);
+        let blocks = growCluster(startGx, startGy, size);
+        if (blocks.length < 3) continue;
+
+        // 修剪
+        const deleteRatio = 0.2 + Math.random() * 0.1;
+        const deleteCount = Math.floor(blocks.length * deleteRatio);
+        if (deleteCount > 0 && blocks.length - deleteCount >= 3) {
+            const shuffled = blocks.slice().sort(() => Math.random() - 0.5);
+            const toDelete = shuffled.slice(0, deleteCount);
+            const deleteSet = new Set(toDelete.map(b => `${b.gx},${b.gy}`));
+            blocks = blocks.filter(b => !deleteSet.has(`${b.gx},${b.gy}`));
+        }
+
+        for (const b of blocks) {
+            extraObjects.push({ type: 'path', x: b.x, y: b.y, w: 48, h: 16 });
+            fixedObstacles.push({ x: b.x, y: b.y, w: 48, h: 16 });
+        }
+        totalPlaced += blocks.length;
+    }
+
+    // ============================================================
+    // ---- 5. 树、坑、堆、建筑附近零碎阴影（避开坑和坡） ----
+    // ============================================================
+    try {
+        const interestPoints = [];
+        for (const t of trees) interestPoints.push({ x: t.x, y: t.y });
+        for (const b of BUILDINGS) interestPoints.push({ x: b.x + b.w/2, y: b.y + b.h/2 });
+        for (const obj of extraObjects) {
+            if (obj.type === 'hollow') interestPoints.push({ x: obj.x + 48, y: obj.y + 48 });
+            if (obj.type === 'slope') interestPoints.push({ x: obj.x + 24, y: obj.y + 16 });
+        }
+
+        const forbiddenRects = [];
+        for (const obj of extraObjects) {
+            if (obj.type === 'hollow') forbiddenRects.push({ x: obj.x, y: obj.y, w: 96, h: 96 });
+            if (obj.type === 'slope') forbiddenRects.push({ x: obj.x, y: obj.y, w: 48, h: 32 });
+        }
+
+        function isOverlappingForbidden(rect) {
+            for (const f of forbiddenRects) {
+                if (rect.x < f.x + f.w && rect.x + rect.w > f.x &&
+                    rect.y < f.y + f.h && rect.y + rect.h > f.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        let added = 0;
+        for (const pt of interestPoints) {
+            if (added > 60) break;
+            const num = 1 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < num; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+                const dist = 2 + Math.random() * 4;
+                const dx = Math.round(Math.cos(angle) * dist);
+                const dy = Math.round(Math.sin(angle) * dist);
+                const gx = Math.floor((pt.x + dx * 16) / 16);
+                const gy = Math.floor((pt.y + dy * 16) / 16);
+                if (gx < 1 || gx + 3 >= WORLD_COLS || gy < 1 || gy + 1 >= WORLD_ROWS) continue;
+                const cx = gx * 16 + 8;
+                const cy = gy * 16 + 8;
+                if (!isGrass(cx, cy)) continue;
+
+                const blockRect = { x: gx * 16, y: gy * 16, w: 48, h: 16 };
+                if (isOverlappingForbidden(blockRect)) continue;
+                // 检查是否与固定障碍重叠
+                if (isBlocked(blockRect.x, blockRect.y, blockRect.w, blockRect.h, fixedObstacles)) continue;
+
+                extraObjects.push({ type: 'path', x: blockRect.x, y: blockRect.y, w: 48, h: 16 });
+                added++;
+
+                if (Math.random() < 0.3) {
+                    const dir = Math.random() > 0.5 ? 1 : -1;
+                    const ngx = gx + dir * 3;
+                    const ngy = gy + (Math.random() > 0.5 ? 1 : -1);
+                    if (ngx >= 1 && ngx + 3 < WORLD_COLS && ngy >= 1 && ngy + 1 < WORLD_ROWS) {
+                        const ncx = ngx * 16 + 8;
+                        const ncy = ngy * 16 + 8;
+                        if (isGrass(ncx, ncy)) {
+                            const neighborRect = { x: ngx * 16, y: ngy * 16, w: 48, h: 16 };
+                            if (!isOverlappingForbidden(neighborRect) &&
+                                !isBlocked(neighborRect.x, neighborRect.y, neighborRect.w, neighborRect.h, fixedObstacles)) {
+                                extraObjects.push({ type: 'path', x: neighborRect.x, y: neighborRect.y, w: 48, h: 16 });
+                                added++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        console.log('树坑堆建筑附近零碎阴影添加完成，新增块数:', added);
+    } catch (e) {
+        console.warn('零碎阴影生成跳过，错误:', e);
+    }
+    // ============================================================
+    // ---- 6. 土地装饰物（使用 Path_Tile.png，只出现在黄土上） ----
+    // ============================================================
+
+    // ---- 6a. 草土坑（绿色坑，但使用 Path_Tile.png 的坑区域，只在草地） ----
+    const grassHollowCount = 4 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < grassHollowCount; i++) {
+        let placed = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const col = Math.floor(Math.random() * (WORLD_COLS - 6));
+            const row = Math.floor(Math.random() * (WORLD_ROWS - 6));
+            const x = col * TILE, y = row * TILE;
+            if (isAllGrass(x, y, 96, 96) && !isBlocked(x, y, 96, 96, fixedObstacles)) {
+    extraObjects.push({
+        type: 'grass_hollow',
+        x, y, w: 96, h: 96,
+        collisionX: x + 24, collisionY: y + 30, collisionW: 48, collisionH: 42 
+    });
+    fixedObstacles.push({ x: x + 24, y: y + 24, w: 48, h: 48 });
+    placed = true;
+    break;
+}
+        }
+        if (!placed) console.warn('草土坑生成失败');
+    }
+
+    // ---- 6b. 土草坡（黄土上的坡，使用 Path_Tile.png 的坡区域，只在黄土） ----
+    const pathSlopeCount = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < pathSlopeCount; i++) {
+        let placed = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const col = Math.floor(Math.random() * (WORLD_COLS - 3));
+            const row = Math.floor(Math.random() * (WORLD_ROWS - 2));
+            const x = col * TILE, y = row * TILE;
+            // 黄土区域：不是全部草地（即含有黄土）
+            if (!isAllGrass(x, y, 48, 32) && !isBlocked(x, y, 48, 32, fixedObstacles)) {
+    extraObjects.push({
+        type: 'path_slope',
+        x, y, w: 48, h: 32,
+        collisionX: x + 12, collisionY: y + 11, collisionW: 24, collisionH: 12  
+    });
+    fixedObstacles.push({ x: x + 12, y: y + 8, w: 24, h: 16 });
+    placed = true;
+    break;
+}
+        }
+        if (!placed) console.warn('土草坡生成失败');
+    }
+
+    // ---- 6c. 土阴影（黄土上的长条阴影，使用 Path_Tile.png 的路径区域，只在黄土） ----
+    const pathShadowCount = 8 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < pathShadowCount; i++) {
+        let placed = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const col = Math.floor(Math.random() * (WORLD_COLS - 3));
+            const row = Math.floor(Math.random() * (WORLD_ROWS - 1));
+            const x = col * TILE, y = row * TILE;
+            if (!isAllGrass(x, y, 48, 16) && !isBlocked(x, y, 48, 16, fixedObstacles)) {
+                extraObjects.push({ type: 'path_shadow', x, y, w: 48, h: 16 });
+                // 不加入障碍，无碰撞
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) console.warn('土阴影生成失败');
+    }
+    console.log('草路阴影生成完成，总块数:', extraObjects.filter(o => o.type === 'path').length);
+}
 // ============================================================
 // 怪物系统
 // ============================================================
@@ -479,8 +915,8 @@ function spawnMonster() {
 // ============================================================
 // 加载图片
 // ============================================================
-const IMG = { player: null, skeleton: null, tree: null, house: null };
-let imagesLoaded = 0, TOTAL_IMAGES = 4;
+const IMG = { player: null, skeleton: null, tree: null, house: null, grass: null, path: null, cliff: null, path_tile: null, water: null };
+let imagesLoaded = 0, TOTAL_IMAGES = 9;
 function loadAllImages(cb) {
     function onLoad() { if (++imagesLoaded >= TOTAL_IMAGES && cb) cb(); }
     function onError(src) { console.warn('图片加载失败:', src); onLoad(); }
@@ -488,6 +924,11 @@ function loadAllImages(cb) {
     const sk = new Image(); sk.onload = onLoad; sk.onerror = ()=>onError('Skeleton.png'); sk.src = 'assets/img/army/Skeleton.png'; IMG.skeleton = sk;
     const tr = new Image(); tr.onload = onLoad; tr.onerror = ()=>onError('Oak_Tree.png'); tr.src = 'assets/img/outdoor/Oak_Tree.png'; IMG.tree = tr;
     const hs = new Image(); hs.onload = onLoad; hs.onerror = ()=>onError('House_1_Wood_Base_Blue.png'); hs.src = 'assets/img/outdoor/House_1_Wood_Base_Blue.png'; IMG.house = hs;
+    const g = new Image(); g.onload = onLoad; g.onerror = ()=>onError('Grass_Middle.png'); g.src = 'assets/img/Tiles/Grass_Middle.png'; IMG.grass = g;
+    const pa = new Image(); pa.onload = onLoad; pa.onerror = ()=>onError('Path_Middle.png'); pa.src = 'assets/img/Tiles/Path_Middle.png'; IMG.path = pa;
+    const cl = new Image(); cl.onload = onLoad; cl.onerror = ()=>onError('Cliff_Tile.png'); cl.src = 'assets/img/Tiles/Cliff_Tile.png'; IMG.cliff = cl;
+    const pt = new Image(); pt.onload = onLoad; pt.onerror = ()=>onError('Path_Tile.png'); pt.src = 'assets/img/Tiles/Path_Tile.png'; IMG.path_tile = pt;
+    const wa = new Image(); wa.onload = onLoad; wa.onerror = ()=>onError('Water_Middle.png'); wa.src = 'assets/img/Tiles/Water_Middle.png'; IMG.water = wa;
 }
 
 // ============================================================
@@ -1301,6 +1742,14 @@ function tryMove(px,py,dx,dy) {
             if (circleCircleCollide(testX, py, r, t.x, t.y, t.r)) { collide = true; break; }
         }
     }
+        // 额外地形碰撞（水平移动）
+    for (const obj of extraObjects) {
+        if (obj.collisionX === undefined) continue; // 跳过无碰撞物体
+        if (rectCircleCollide(obj.collisionX, obj.collisionY, obj.collisionW, obj.collisionH, testX, py, r)) {
+            collide = true;
+            break;
+        }
+    }
     if (!collide) finalX = testX;
 
     let testY = py + dy*speed;
@@ -1312,6 +1761,14 @@ function tryMove(px,py,dx,dy) {
     if (!collide) {
         for (const t of trees) {
             if (circleCircleCollide(finalX, testY, r, t.x, t.y, t.r)) { collide = true; break; }
+        }
+    }
+        // 额外地形碰撞（垂直移动）
+    for (const obj of extraObjects) {
+        if (obj.collisionX === undefined) continue;
+        if (rectCircleCollide(obj.collisionX, obj.collisionY, obj.collisionW, obj.collisionH, finalX, testY, r)) {
+            collide = true;
+            break;
         }
     }
     if (!collide) finalY = testY;
@@ -1393,25 +1850,115 @@ function drawScene() {
     updateCamera();
     ctx.save();
 
-    // 背景
-    const grad = ctx.createRadialGradient(WORLD_W*0.5, WORLD_H*0.4, 200, WORLD_W*0.5, WORLD_H*0.5, WORLD_W*0.6);
-    grad.addColorStop(0, '#2a3d3a');
-    grad.addColorStop(0.6, '#1d2e2a');
-    grad.addColorStop(1, '#0f1816');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+        // ---- 草地与黄土斑块 ----
+    const tileSize = 16;
+    const startCol = Math.floor(camera.x / tileSize);
+    const startRow = Math.floor(camera.y / tileSize);
+    const endCol = Math.ceil((camera.x + canvasW) / tileSize) + 1;
+    const endRow = Math.ceil((camera.y + canvasH) / tileSize) + 1;
 
-    // 树木
+    const grassLoaded = IMG.grass && IMG.grass.complete && IMG.grass.naturalWidth > 0;
+    const pathLoaded = IMG.path && IMG.path.complete && IMG.path.naturalWidth > 0;
+
+    if (!grassLoaded) {
+        ctx.fillStyle = '#3d7a4a';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+        return;
+    }
+    
+
+    // 黄土阈值，调整此值控制黄土面积（约 0.25~0.35 之间）
+    const PATH_THRESHOLD = 0.5;
+
+    for (let row = startRow; row < endRow; row++) {
+        for (let col = startCol; col < endCol; col++) {
+            const px = col * tileSize - camera.x;
+            const py = row * tileSize - camera.y;
+            if (px + tileSize < 0 || px > canvasW || py + tileSize < 0 || py > canvasH) continue;
+
+            // ---- 使用多层正弦波生成不规则连续区域 ----
+            const v1 = Math.sin(row * 0.04 + col * 0.035) * Math.cos(row * 0.03 - col * 0.04);
+            const v2 = Math.sin(row * 0.09 + col * 0.08) * Math.cos(row * 0.07 - col * 0.06);
+            const v3 = Math.sin(row * 0.15 + col * 0.12) * Math.cos(row * 0.13 - col * 0.14);
+            let val = v1 * 1.0 + v2 * 0.6 + v3 * 0.3;
+            val += 0.2 * Math.sin(row * 0.011 + col * 0.023);
+            val += 0.2 * Math.cos(row * 0.019 - col * 0.017);
+
+            const isPath = val > PATH_THRESHOLD;
+
+            if (isPath && pathLoaded) {
+                ctx.drawImage(IMG.path, px, py, tileSize, tileSize);
+            } else {
+                ctx.drawImage(IMG.grass, px, py, tileSize, tileSize);
+            }
+        }
+    }
+          // ---- 绘制额外地形（草坑、草坡、草路 + 土地装饰物） ----
+    const cliffLoaded = IMG.cliff && IMG.cliff.complete && IMG.cliff.naturalWidth > 0;
+    const pathTileLoaded = IMG.path_tile && IMG.path_tile.complete && IMG.path_tile.naturalWidth > 0;
+
+    if (cliffLoaded || pathTileLoaded) {
+        for (const obj of extraObjects) {
+            const sp = worldToScreen(obj.x, obj.y);
+            if (sp.x + obj.w < 0 || sp.x > canvasW || sp.y + obj.h < 0 || sp.y > canvasH) continue;
+
+            let img = null;
+            let src = null;
+
+            // 根据类型选择图片和裁剪源
+            if (obj.type === 'hollow' || obj.type === 'slope' || obj.type === 'path') {
+                // 原有草版（Cliff_Tile.png）
+                if (cliffLoaded) {
+                    img = IMG.cliff;
+                    if (obj.type === 'hollow') src = CLIFF_SPRITES.hollow;
+                    else if (obj.type === 'slope') src = CLIFF_SPRITES.slope;
+                    else if (obj.type === 'path') src = CLIFF_SPRITES.path;
+                    
+                }
+            } else if (obj.type === 'grass_hollow') {
+    if (pathTileLoaded) {
+        img = IMG.path_tile;
+        src = PATH_SPRITES.hollow;
+    }
+}
+            else if (obj.type === 'path_slope') {
+                // 土草坡（使用 Path_Tile.png 的坡）
+                if (pathTileLoaded) {
+                    img = IMG.path_tile;
+                    src = PATH_SPRITES.slope;
+                }
+            } else if (obj.type === 'path_shadow') {
+                // 土阴影（使用 Path_Tile.png 的路径）
+                if (pathTileLoaded) {
+                    img = IMG.path_tile;
+                    src = PATH_SPRITES.path;
+                }
+            }
+
+            if (img && src) {
+                ctx.drawImage(img, src.sx, src.sy, src.sw, src.sh, sp.x, sp.y, obj.w, obj.h);
+            } else {
+                // 降级：颜色块
+                let color = '#aaa';
+                if (obj.type === 'hollow' || obj.type === 'grass_hollow') color = '#3a7a3a';
+                else if (obj.type === 'slope' || obj.type === 'path_slope') color = '#5a8a5a';
+                else if (obj.type === 'path' || obj.type === 'path_shadow') color = '#8a7a5a';
+                ctx.fillStyle = color;
+                ctx.fillRect(sp.x, sp.y, obj.w, obj.h);
+            }
+        }
+    }
+      // ---- 绘制树木（按 Y 排序，下面的在上层） ----
     const sortedTrees = [...trees].sort((a, b) => a.y - b.y);
-    for (const t of trees) {
+    for (const t of sortedTrees) {
         const sp = worldToScreen(t.x, t.y);
-        if (sp.x < -100 || sp.x > W+100 || sp.y < -100 || sp.y > H+100) continue;
+        if (sp.x < -100 || sp.x > canvasW + 100 || sp.y < -100 || sp.y > canvasH + 100) continue;
         if (IMG.tree && IMG.tree.complete && IMG.tree.naturalWidth > 0) {
             ctx.drawImage(IMG.tree, sp.x - t.w/2, sp.y - t.h/2, t.w, t.h);
         } else {
             ctx.fillStyle = '#2d5a3a';
             ctx.beginPath();
-            ctx.arc(sp.x, sp.y, t.r, 0, Math.PI*2);
+            ctx.arc(sp.x, sp.y, t.r, 0, Math.PI * 2);
             ctx.fill();
         }
     }
@@ -1534,6 +2081,7 @@ if (dist < 70) {
             ctx.translate(sp.x, sp.y);
             if (mon.facingDir === 'left') ctx.scale(-1, 1);
             ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
+            
             ctx.restore();
         } else {
             ctx.fillStyle = '#888';
@@ -1582,7 +2130,8 @@ if (dist < 70) {
         STATE.frameTimer = 0;
         STATE.frameIndex = (STATE.frameIndex + 1) % anim.length;
     }
-    const col = anim[STATE.frameIndex] % cfg.cols;
+    const idx = STATE.frameIndex % anim.length;    // 先限制索引范围
+const col = anim[idx] % cfg.cols;
     const sx = col * cfg.frameWidth, sy = row * cfg.frameHeight;
 
     if (IMG.player && IMG.player.complete && IMG.player.naturalWidth > 0) {
@@ -1600,49 +2149,80 @@ if (dist < 70) {
 }
 
 function updateAnimation() {
+    // ---- 倒地状态 ----
     if (STATE.isKnockdown) {
-        STATE.animState = 'knockdown';
+        if (STATE.animState !== 'knockdown') {
+            STATE.animState = 'knockdown';
+            STATE.frameIndex = 0;
+            STATE.frameTimer = 0;
+        }
         STATE.knockdownTimer++;
         if (STATE.knockdownTimer > 60) {
             STATE.isKnockdown = false;
             STATE.knockdownTimer = 0;
             STATE.animState = 'idle';
+            STATE.frameIndex = 0;
+            STATE.frameTimer = 0;
             showFloatMessage('💪 恢复了', 'system');
         }
         return;
     }
+
+    // ---- 攻击状态 ----
     if (STATE.isAttacking) {
-        STATE.animState = 'attack';
+        if (STATE.animState !== 'attack') {
+            STATE.animState = 'attack';
+            STATE.frameIndex = 0;
+            STATE.frameTimer = 0;
+        }
         STATE.attackTimer++;
         if (STATE.attackTimer > 30) {
             STATE.isAttacking = false;
             STATE.attackTimer = 0;
             STATE.animState = 'idle';
+            STATE.frameIndex = 0;
+            STATE.frameTimer = 0;
         }
         return;
     }
+
+    // ---- 移动 / 疾跑 ----
     const moving = STATE.moving;
     const running = STATE.keys.shift && moving;
     STATE.isRunning = running;
+
     if (!moving) {
-    STATE.animState = 'idle';
-    STATE.frameIndex = 0;   // 添加这一行
-    STATE.frameTimer = 0;   // 建议也重置
-    return;
-}
+        if (STATE.animState !== 'idle') {
+            STATE.animState = 'idle';
+            STATE.frameIndex = 0;
+            STATE.frameTimer = 0;
+        }
+        return;
+    }
+
+    // 计算方向
     let dx = (STATE.keys.d ? 1 : 0) - (STATE.keys.a ? 1 : 0);
     let dy = (STATE.keys.s ? 1 : 0) - (STATE.keys.w ? 1 : 0);
-    if (STATE.joystick.active) { dx = STATE.joystick.dx; dy = STATE.joystick.dy; }
+    if (STATE.joystick.active) {
+        dx = STATE.joystick.dx;
+        dy = STATE.joystick.dy;
+    }
 
     let dir = 'down';
-// 先判断水平方向（左右），再判断垂直方向（上下）
-if (dx > 0.1) dir = 'right';
-else if (dx < -0.1) dir = 'left';
-else if (dy < -0.1) dir = 'up';
-else if (dy > 0.1) dir = 'down';
+    if (dx > 0.1) dir = 'right';
+    else if (dx < -0.1) dir = 'left';
+    else if (dy < -0.1) dir = 'up';
+    else if (dy > 0.1) dir = 'down';
 
-    if (running) STATE.animState = `run_${dir}`;
-    else STATE.animState = `walk_${dir}`;
+    const newState = running ? `run_${dir}` : `walk_${dir}`;
+
+    // 状态变化时重置帧
+    if (STATE.animState !== newState) {
+        STATE.animState = newState;
+        STATE.frameIndex = 0;
+        STATE.frameTimer = 0;
+    }
+
     STATE.facingDir = dir;
 }
 
@@ -1768,7 +2348,9 @@ function initGameCanvas() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     generateTrees();
-    campfire = { x: WORLD_W * 0.5, y: WORLD_H * 0.3, frame: 0 };
+        extraObjects = []; // 确保清空
+    generateExtraTerrain(); // 生成草坑、草坡、草路
+    campfire = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
     STATE.pos.x = WORLD_W * 0.5;
     STATE.pos.y = WORLD_H * 0.55;
     updateCamera();
