@@ -1376,10 +1376,11 @@ function updateAnimation() {
     if (STATE.joystick.active) { dx = STATE.joystick.dx; dy = STATE.joystick.dy; }
 
     let dir = 'down';
-    if (dy < -0.1) dir = 'up';
-    else if (dy > 0.1) dir = 'down';
-    else if (dx > 0.1) dir = 'right';
-    else if (dx < -0.1) dir = 'left';
+// 先判断水平方向（左右），再判断垂直方向（上下）
+if (dx > 0.1) dir = 'right';
+else if (dx < -0.1) dir = 'left';
+else if (dy < -0.1) dir = 'up';
+else if (dy > 0.1) dir = 'down';
 
     if (running) STATE.animState = `run_${dir}`;
     else STATE.animState = `walk_${dir}`;
