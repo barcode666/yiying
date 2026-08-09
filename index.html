@@ -218,6 +218,7 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 <div class="char-row">
 <div class="char-name" id="charName">无名旅者 <span style="font-weight:300;font-size:14px;color:#4a6a8a;">#C-0713</span></div>
 <div class="trait-badge locked" id="traitDisplay">⚙️ 特长：??? (沉睡)</div>
+<div class="job-badge" id="jobDisplay" style="font-size:12px;color:#6f8bb0;background:rgba(0,40,80,0.25);padding:3px 16px;border-radius:40px;border:1px solid rgba(100,180,255,0.06);display:inline-block;width:fit-content;">职业：散人</div>
 </div>
 <div class="stats-grid" id="statsPanel"></div>
 <div class="action-row">
@@ -277,7 +278,7 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 <div class="achievement-box">
 <div class="icon">🏆</div>
 <div class="title">✦ 完成事件 ✦</div>
-<div class="desc">已将您的丰功伟绩同步到Project：Chronicle</div>
+<div class="desc">已将您的功绩同步到Chronicle</div>
 <div class="hint">点击任意位置关闭</div>
 </div>
 </div>
@@ -290,7 +291,7 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 // ============================================================
 let animationId = null;
 const STATE = {
-    player: { name: '无名旅者', stats: { 筋骨: 0, 智谋: 0, 体魄: 0 }, trait: null, traitLocked: true },
+    player: { name: '无名旅者', stats: { 筋骨: 0, 智谋: 0, 体魄: 0 }, trait: null, traitLocked: true,job: '散人',           },
     hasPaid: false,
     paidAnimating: false,
     pos: { x: 1000, y: 1000 },
@@ -303,6 +304,7 @@ const STATE = {
     hudVisible: false,
     nearInteract: null,
     nearBuilding: null,
+    nearCampfire: false,
     gamePaused: false,
     tradeOpen: false,
     monsterSpawnTimer: 0,
@@ -364,11 +366,20 @@ const TRAIT_POOL = [
     { name: '古代机械构造', bonus: 0.25, desc: '工程/机关-25%' }
 ];
 const EVENT_POOL = [
-    { id: 'forge', title: '制造马镫', baseDiff: 80, primaryStat: '智谋', threshold: 40, desc: '精钢锻造', traitMatch: ['机械精通','古代机械构造'] },
+    { id: 'forge', title: '制造马镫', baseDiff: 80, primaryStat: '智谋', threshold: 60, desc: '精钢锻造', traitMatch: ['机械精通','古代机械构造'] },
     { id: 'crack', title: '破解机关锁', baseDiff: 100, primaryStat: '智谋', threshold: 45, desc: '星盘密文', traitMatch: ['机械精通','古代机械构造','通灵占星'] },
     { id: 'ritual', title: '祭天占卜', baseDiff: 120, primaryStat: '智谋', threshold: 50, desc: '解读龟甲', traitMatch: ['通灵占星'] }
 ];
-
+const JOB_CONFIG = {
+    '散人': {
+        bonus: {},      // 无加成
+        displayName: '散人'
+    },
+    '启示者': {
+        bonus: { 智谋: 10 },
+        displayName: '启示者'
+    }
+};
 // ============================================================
 // 建筑 & 树木
 // ============================================================
@@ -530,18 +541,27 @@ document.addEventListener('keydown', function(e) {
         }
     }
 
-    // F 键（建筑交互）
-    if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        if (STATE.nearBuilding) {
-            if (STATE.nearBuilding.type === 'blacksmith') {
-                openDialog();
-            } else {
-                showFloatMessage('你来到了 ' + STATE.nearBuilding.label, 'system');
-            }
+    // F 键（建筑/篝火交互）
+if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    if (STATE.gamePaused) return;   // 防止在对话框、编年史等打开时误触
+
+    // 优先检测篝火
+    if (STATE.nearCampfire) {
+        openCampfireDialog();
+        return;
+    }
+
+    // 其次检测建筑
+    if (STATE.nearBuilding) {
+        if (STATE.nearBuilding.type === 'blacksmith') {
+            openDialog();
+        } else {
+            showFloatMessage('你来到了 ' + STATE.nearBuilding.label, 'system');
         }
         return;
     }
+}
 
     // Shift 跑步
     if (e.key === 'Shift') { STATE.keys.shift = true; return; }
@@ -605,23 +625,49 @@ function showFloatMessage(text, type) {
     el.classList.add('show');
     floatTimeout = setTimeout(() => { el.classList.remove('show'); floatTimeout = null; }, 3500);
 }
+// 正态分布随机数 (Box-Muller)
+function normalRandom(mean = 0, sigma = 1) {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    return mean + sigma * z;
+}
 
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
 // 核心游戏逻辑
 function generateNewCharacter() {
-    const stats = { 筋骨: Math.floor(Math.random()*80)+30, 智谋: Math.floor(Math.random()*80)+30, 体魄: Math.floor(Math.random()*80)+30 };
-    const trait = TRAIT_POOL[Math.floor(Math.random()*TRAIT_POOL.length)];
+    const mean = 60;      // 基准线
+    const sigma = 15;     // 标准差，可根据需要调整（如 10、20）
+    const stats = {};
+    for (const key of ['筋骨', '智谋', '体魄']) {
+        let raw = normalRandom(mean, sigma);
+        // 四舍五入取整，并裁剪到 [10, 110] 避免极端值
+        let val = Math.round(raw);
+        val = clamp(val, 10, 110);
+        stats[key] = val;
+    }
+
+    const trait = TRAIT_POOL[Math.floor(Math.random() * TRAIT_POOL.length)];
     STATE.player.stats = stats;
     STATE.player.trait = trait;
+    STATE.job = '散人';
     STATE.player.traitLocked = true;
     STATE.hasPaid = false;
-    STATE.pos = { x: WORLD_W/2, y: WORLD_H/2 };
+    STATE.pos = { x: WORLD_W / 2, y: WORLD_H / 2 };
     document.getElementById('eyeBtn').className = 'btn-eye';
     document.getElementById('eyeBtn').textContent = '👁 激活视界';
     renderAll();
     showFloatMessage('你降生于这片古老大地上。', 'system');
     closeTrade();
 }
-function renderAll() { renderStats(); renderTrait(); }
+function renderAll() {
+    renderStats();
+    renderTrait();
+    renderJob(); // 添加这一行
+}
 function renderStats() {
     const p = document.getElementById('statsPanel');
     p.innerHTML = '';
@@ -659,6 +705,21 @@ function renderTrait() {
     } else {
         el.className = 'trait-badge';
         el.innerHTML = `${t.name}：${t.desc}`;
+    }
+}
+function renderJob() {
+    const el = document.getElementById('jobDisplay');
+    if (!el) return;
+    if (STATE.job && STATE.job !== '散人') {
+        el.textContent = '职业：' + STATE.job;
+        el.style.borderColor = 'rgba(255,215,0,0.4)';
+        el.style.color = '#ffd700';
+        el.style.background = 'rgba(255,215,0,0.08)';
+    } else {
+        el.textContent = '职业：散人';
+        el.style.borderColor = 'rgba(255,255,255,0.04)';
+        el.style.color = '#4a5d78';
+        el.style.background = 'rgba(0,0,0,0.2)';
     }
 }
 function performCheck(event, player) {
@@ -782,6 +843,9 @@ document.getElementById('payCancelBtn').addEventListener('click', function() {
 // 铁匠铺对话（两步对话）
 // ============================================================
 function openDialog() {
+    // 设置铁匠铺背景
+    document.querySelector('#dialogOverlay .dialog-bg').style.backgroundImage = "url('assets/img/background/iron.png')";
+     document.querySelector('#dialogOverlay .dialog-title').innerHTML = '⚒️ 铁匠铺';
     const ev = EVENT_POOL.find(e => e.id === 'forge');
     if (!ev) return;
 
@@ -856,7 +920,89 @@ function closeDialog() {
     document.getElementById('dialogOverlay').style.display = 'none';
     STATE.gamePaused = false;
 }
+// ============================================================
+// 篝火转职（新增）
+// ============================================================
+function openCampfireDialog() {
+    if (STATE.gamePaused) return;
 
+    // 设置星空背景
+    document.querySelector('#dialogOverlay .dialog-bg').style.backgroundImage = "url('assets/img/background/star.jpg')";
+    // 设置标题
+    document.querySelector('#dialogOverlay .dialog-title').innerHTML = '✦ 星穹低语 ✦';
+
+    // 检查是否已转职
+    if (STATE.job === '启示者') {
+        showFloatMessage('你已踏上先知之路，无需再转职。', 'system');
+        return;
+    }
+
+    // 检查是否完成过事件
+    if (chronicleRecords.length === 0) {
+        showFloatMessage('你尚未完成任何事件，无法转职。先去历练吧。', 'fail');
+        return;
+    }
+
+    // 构建对话框内容
+    const qHTML = `
+        <div style="font-size:20px;color:#e8f0ff;margin:10px 0;line-height:1.6;">
+            群星与月亮的时代 何为恐惧 彷徨 孤独？<br>
+            何为遁入黑暗？<br>
+            来...一起走吧...
+        </div>
+        <div style="font-size:16px;color:#8ac4ff;margin:16px 0;">
+            <span style="font-size:14px;color:#aac8e0;">是否转职为「启示者」？</span>
+        </div>
+    `;
+    document.querySelector('#dialogOverlay .dialog-question').innerHTML = qHTML;
+
+    const yesBtn = document.getElementById('dialogYes');
+    const noBtn = document.getElementById('dialogNo');
+    yesBtn.style.display = 'inline-block';
+    yesBtn.textContent = '✅ 是';
+    yesBtn.className = 'btn-yes';
+    noBtn.style.display = 'inline-block';
+    noBtn.textContent = '❌ 否';
+    noBtn.className = 'btn-no';
+
+    yesBtn.onclick = function() {
+        // 二次检查
+        if (STATE.job === '启示者') {
+            closeDialog();
+            showFloatMessage('你已为先知。', 'system');
+            return;
+        }
+        if (chronicleRecords.length === 0) {
+            closeDialog();
+            showFloatMessage('你尚未完成任何事件。', 'fail');
+            return;
+        }
+
+        // 执行转职
+        STATE.player.stats.智谋 += 10;
+        STATE.job = '启示者';
+        renderStats();
+        renderJob();
+
+        // 记录编年史
+        const fakeEvent = { title: '转职·启示者', primaryStat: '智谋' };
+        const fakeResult = { success: true, roll: 100, finalDiff: 0 };
+        addChronicleRecord(fakeEvent, fakeResult);
+
+        closeDialog();
+        showFloatMessage('✨ 你已成为「启示者」，智谋+10！', 'milestone');
+        // 如需播放成就视频，取消下面注释
+        // playAchievement();
+    };
+
+    noBtn.onclick = function() {
+        closeDialog();
+        showFloatMessage('你拒绝了天命的召唤。', 'system');
+    };
+
+    document.getElementById('dialogOverlay').style.display = 'block';
+    STATE.gamePaused = true;
+}
 // ============================================================
 // 事件处理 + 成就系统
 // ============================================================
@@ -901,28 +1047,37 @@ function playAchievement() {
 
     let triggered = false;
     let timeoutId = null;
-    let playStarted = false;
+    let checkInterval = null;
 
     function trigger() {
         if (triggered) return;
         triggered = true;
         if (timeoutId) clearTimeout(timeoutId);
-        sound.currentTime = 0;
-        sound.play().catch(e => console.warn('音效播放失败:', e));
-        overlay.style.display = 'flex';
+        if (checkInterval) clearInterval(checkInterval);
+
+        // 1. 先暂停视频并静音，防止结尾声音残留
+        video.pause();
+        video.muted = true;
+
+        // 2. 延迟播放音效，确保视频完全停止
+        setTimeout(() => {
+            sound.currentTime = 0;
+            sound.play().catch(e => console.warn('音效播放失败:', e));
+            overlay.style.display = 'flex';
+        }, 100);
+
         video.onended = null;
         video.onerror = null;
         video.onplaying = null;
-        video.pause();
         console.log('✅ 成就已触发');
     }
 
+    // 重置视频
     video.currentTime = 0;
     video.style.display = 'block';
-    video.muted = false;
+    video.muted = false; // 允许视频声音正常播放
 
     video.onplaying = function() {
-        playStarted = true;
         console.log('视频开始播放');
         video.onended = function() {
             console.log('视频 ended 事件触发');
@@ -949,6 +1104,7 @@ function playAchievement() {
         setTimeout(trigger, 1000);
     };
 
+    // 超时保护
     timeoutId = setTimeout(function() {
         if (!triggered) {
             console.warn('视频超时，强制触发成就');
@@ -956,7 +1112,8 @@ function playAchievement() {
         }
     }, 15000);
 
-    let checkInterval = setInterval(function() {
+    // 轮询检测播放进度
+    checkInterval = setInterval(function() {
         if (triggered) return;
         if (video.duration > 0 && video.currentTime >= video.duration - 0.5) {
             console.log('轮询检测到视频播放完毕');
@@ -964,12 +1121,6 @@ function playAchievement() {
             clearInterval(checkInterval);
         }
     }, 1000);
-
-    const originalTrigger = trigger;
-    trigger = function() {
-        clearInterval(checkInterval);
-        originalTrigger();
-    };
 }
 
 function closeAchievement() {
@@ -1168,6 +1319,7 @@ function drawScene() {
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
     // 树木
+    const sortedTrees = [...trees].sort((a, b) => a.y - b.y);
     for (const t of trees) {
         const sp = worldToScreen(t.x, t.y);
         if (sp.x < -100 || sp.x > W+100 || sp.y < -100 || sp.y > H+100) continue;
@@ -1253,6 +1405,25 @@ function drawScene() {
         ctx.beginPath();
         ctx.arc(fx, fy-8, 14 + Math.sin(campfire.frame*0.5)*3, 0, Math.PI*2);
         ctx.fill();
+        // ---- 检测篝火交互 ----
+const dx = STATE.pos.x - campfire.x;
+const dy = STATE.pos.y - campfire.y;
+const dist = Math.sqrt(dx*dx + dy*dy);
+if (dist < 70) {
+    STATE.nearCampfire = true;
+    const sp = worldToScreen(campfire.x, campfire.y);
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(sp.x - 60, sp.y - 40, 120, 30);
+    ctx.fillStyle = '#ff8844';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 8;
+    ctx.fillText('按 F 互动', sp.x, sp.y - 20);
+    ctx.shadowBlur = 0;
+} else {
+    STATE.nearCampfire = false;
+}
     }
 
     // 怪物
