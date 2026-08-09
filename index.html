@@ -699,12 +699,20 @@ function renderTrait() {
     const el = document.getElementById('traitDisplay');
     const t = STATE.player.trait;
     if (!t) return;
+
     if (STATE.player.traitLocked) {
+        // 未解锁：所有特长统一隐藏
         el.className = 'trait-badge locked';
         el.innerHTML = '🔒 特长：??? (沉睡的异世记忆)';
     } else {
+        // 已解锁：显示具体内容
         el.className = 'trait-badge';
-        el.innerHTML = `${t.name}：${t.desc}`;
+        if (t.bonus === 0) {
+            // 版本未启用特长，仅显示名称，不显示描述
+            el.innerHTML = `🛸 特长：${t.name}`;
+        } else {
+            el.innerHTML = `${t.name}：${t.desc}`;
+        }
     }
 }
 function renderJob() {
@@ -790,7 +798,7 @@ document.getElementById('closeChronicle').addEventListener('click', closeChronic
 // ============================================================
 function openPayDialog() {
     if (STATE.hasPaid) { showFloatMessage('观测权限已激活','system'); return; }
-    document.getElementById('payDialogOverlay').style.display = 'block';
+    document.getElementById('payDialogOverlay').style.display = 'flex';  // 改为 flex
     STATE.gamePaused = true;
 }
 function closePayDialog() {
@@ -817,7 +825,8 @@ document.getElementById('payConfirmBtn').addEventListener('click', function() {
         if (STATE.player.traitLocked) {
             const t = STATE.player.trait;
             if (t.bonus === 0) {
-                STATE.player.traitLocked = true;
+                // 解锁显示，但无实际效果
+                STATE.player.traitLocked = false;
                 showFloatMessage(`🛸 天赋「${t.name}」与当前世界不兼容`,'system');
             } else {
                 STATE.player.traitLocked = false;
@@ -946,8 +955,8 @@ function openCampfireDialog() {
     // 构建对话框内容
     const qHTML = `
         <div style="font-size:20px;color:#e8f0ff;margin:10px 0;line-height:1.6;">
-            群星与月亮的时代 何为恐惧 彷徨 孤独？<br>
-            何为遁入黑暗？<br>
+            群星与月亮的时代 何谓恐惧 彷徨 孤独？<br>
+            何谓遁入黑暗？<br>
             来...一起走吧...
         </div>
         <div style="font-size:16px;color:#8ac4ff;margin:16px 0;">
@@ -989,11 +998,26 @@ function openCampfireDialog() {
         const fakeResult = { success: true, roll: 100, finalDiff: 0 };
         addChronicleRecord(fakeEvent, fakeResult);
 
+    // 播放转职视频，不显示成就弹窗
+// 播放转职视频，显示自定义弹窗
+playAchievement(
+    'assets/video/2.mp4', 
+    function() {
+        // 视频结束后、弹窗出现后执行（可选）
+        // 这里不需要再显示浮窗，因为弹窗里已经写了
+    }, 
+    true,   // 显示弹窗
+    '✦ 转职成功 ✦',  // 自定义标题
+    '你已成为「启示者」，智谋永久 +10'  // 自定义描述
+);
+
+// 注意：这里不要再调用 showFloatMessage，因为弹窗已经显示内容了
+        // 4. 关闭对话框
         closeDialog();
+
+        // 5. 显示消息
         showFloatMessage('✨ 你已成为「启示者」，智谋+10！', 'milestone');
-        // 如需播放成就视频，取消下面注释
-        // playAchievement();
-    };
+    false};
 
     noBtn.onclick = function() {
         closeDialog();
@@ -1036,7 +1060,7 @@ let achievementSound = document.getElementById('achievementSound');
 let achievementOverlay = document.getElementById('achievementOverlay');
 let isAchievementPlaying = false;
 
-function playAchievement() {
+function playAchievement(videoSrc = 'assets/video/1.mp4', onComplete = null, showOverlay = true, overlayTitle = '✦ 完成事件 ✦', overlayDesc = '已将您的丰功伟绩同步到Project：Chronicle') {
     if (isAchievementPlaying) return;
     isAchievementPlaying = true;
     STATE.gamePaused = true;
@@ -1044,6 +1068,9 @@ function playAchievement() {
     const video = achievementVideo;
     const sound = achievementSound;
     const overlay = achievementOverlay;
+
+    video.src = videoSrc;
+    video.load();
 
     let triggered = false;
     let timeoutId = null;
@@ -1055,15 +1082,29 @@ function playAchievement() {
         if (timeoutId) clearTimeout(timeoutId);
         if (checkInterval) clearInterval(checkInterval);
 
-        // 1. 先暂停视频并静音，防止结尾声音残留
+        // 暂停视频（保留最后一帧，不隐藏）
         video.pause();
         video.muted = true;
 
-        // 2. 延迟播放音效，确保视频完全停止
         setTimeout(() => {
+            // 播放音效
             sound.currentTime = 0;
             sound.play().catch(e => console.warn('音效播放失败:', e));
-            overlay.style.display = 'flex';
+
+            // 显示成就弹窗（自定义标题和描述）
+            if (showOverlay) {
+                // 更新弹窗内容
+                document.querySelector('#achievementOverlay .title').textContent = overlayTitle;
+                document.querySelector('#achievementOverlay .desc').textContent = overlayDesc;
+                overlay.style.display = 'flex';
+            } else {
+                // 如果不显示弹窗，直接恢复游戏并执行回调
+                STATE.gamePaused = false;
+                isAchievementPlaying = false;
+                if (typeof onComplete === 'function') {
+                    onComplete();
+                }
+            }
         }, 100);
 
         video.onended = null;
@@ -1075,7 +1116,7 @@ function playAchievement() {
     // 重置视频
     video.currentTime = 0;
     video.style.display = 'block';
-    video.muted = false; // 允许视频声音正常播放
+    video.muted = false;
 
     video.onplaying = function() {
         console.log('视频开始播放');
@@ -1104,7 +1145,6 @@ function playAchievement() {
         setTimeout(trigger, 1000);
     };
 
-    // 超时保护
     timeoutId = setTimeout(function() {
         if (!triggered) {
             console.warn('视频超时，强制触发成就');
@@ -1112,7 +1152,6 @@ function playAchievement() {
         }
     }, 15000);
 
-    // 轮询检测播放进度
     checkInterval = setInterval(function() {
         if (triggered) return;
         if (video.duration > 0 && video.currentTime >= video.duration - 0.5) {
