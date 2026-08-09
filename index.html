@@ -331,7 +331,9 @@ const SPRITE = {
     frameWidth: 32, frameHeight: 32, cols: 6,
     rows: {
         walk_down: 0, walk_right: 1, walk_up: 2,
-        run_down: 3, run_up: 4, run_right: 5,
+        run_down: 3,
+    run_right: 4,   // 5 改为 4
+    run_up: 5,  
         attack_down: 6, attack_right: 7, attack_up: 8,
         knockdown: 9
     },
@@ -1363,8 +1365,12 @@ function updateAnimation() {
     const moving = STATE.moving;
     const running = STATE.keys.shift && moving;
     STATE.isRunning = running;
-    if (!moving) { STATE.animState = 'idle'; return; }
-
+    if (!moving) {
+    STATE.animState = 'idle';
+    STATE.frameIndex = 0;   // 添加这一行
+    STATE.frameTimer = 0;   // 建议也重置
+    return;
+}
     let dx = (STATE.keys.d ? 1 : 0) - (STATE.keys.a ? 1 : 0);
     let dy = (STATE.keys.s ? 1 : 0) - (STATE.keys.w ? 1 : 0);
     if (STATE.joystick.active) { dx = STATE.joystick.dx; dy = STATE.joystick.dy; }
