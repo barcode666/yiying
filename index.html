@@ -267,7 +267,7 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 <div class="chronicle-container">
 <div class="chronicle-header"><div class="title">◈ 编年史</div><button class="close-btn" id="closeChronicle">✕ 关闭</button></div>
 <div class="chronicle-list" id="chronicleList"></div>
-<div class="chronicle-footer">「 历史由胜利者书写，但每一笔都由你挥就 」</div>
+<div class="chronicle-footer">「 历史由胜利者书写，愿这里的每一笔都由你挥就 」</div>
 </div>
 </div>
 <!-- 成就 -->
@@ -276,8 +276,8 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 <div id="achievementOverlay" onclick="closeAchievement()">
 <div class="achievement-box">
 <div class="icon">🏆</div>
-<div class="title">✦ 成就解锁 ✦</div>
-<div class="desc">事件检定成功，记入编年史</div>
+<div class="title">✦ 完成事件 ✦</div>
+<div class="desc">已将您的丰功伟绩同步到Project：Chronicle</div>
 <div class="hint">点击任意位置关闭</div>
 </div>
 </div>
@@ -391,12 +391,12 @@ function generateTrees() {
             if (Math.sqrt((x-sx)**2 + (y-sy)**2) > SPAWN_RADIUS) valid = true;
             att++;
         }
-        if (valid) trees.push({ x, y, w:64, h:64, r:28 });
+        if (valid) trees.push({ x, y, w:64, h:64, r:10 });
     }
     while (trees.length < 50) {
         let x = 60 + Math.random()*(WORLD_W-120);
         let y = 60 + Math.random()*(WORLD_H-120);
-        if (Math.sqrt((x-sx)**2 + (y-sy)**2) > SPAWN_RADIUS) trees.push({ x, y, w:64, h:64, r:28 });
+        if (Math.sqrt((x-sx)**2 + (y-sy)**2) > SPAWN_RADIUS) trees.push({ x, y, w:64, h:64, r:10 });
     }
 }
 
@@ -608,7 +608,7 @@ function showFloatMessage(text, type) {
 
 // 核心游戏逻辑
 function generateNewCharacter() {
-    const stats = { 筋骨: Math.floor(Math.random()*100)+50, 智谋: Math.floor(Math.random()*100)+50, 体魄: Math.floor(Math.random()*100)+50 };
+    const stats = { 筋骨: Math.floor(Math.random()*80)+30, 智谋: Math.floor(Math.random()*80)+30, 体魄: Math.floor(Math.random()*80)+30 };
     const trait = TRAIT_POOL[Math.floor(Math.random()*TRAIT_POOL.length)];
     STATE.player.stats = stats;
     STATE.player.trait = trait;
@@ -673,7 +673,8 @@ function performCheck(event, player) {
     let finalDiff = event.baseDiff * (1 - perkReduction);
     finalDiff = Math.max(finalDiff, 20);
     const roll = Math.floor(Math.random() * 100) + 1;
-    const isSuccess = roll >= finalDiff;
+   const statBonus = (statValue - event.threshold) * 0.5;  // 每高于门槛1点，+0.5加成
+const isSuccess = (roll + statBonus) >= finalDiff;
     return { success: isSuccess, roll: roll, finalDiff: finalDiff, msg: isSuccess ? '天命所归！' : '差之毫厘。' };
 }
 
@@ -999,16 +1000,20 @@ function showTradeNotPermitted() {
 function openTrade() {
     const p = document.getElementById('tradePanel');
     p.innerHTML = `
-        <h2>🏛️ 交易行</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.05);padding-bottom:16px;margin-bottom:16px;">
+            <h2 style="font-size:22px;font-weight:300;letter-spacing:4px;color:#8ab4d0;margin:0;">🏛️ 交易行</h2>
+            <button onclick="closeTrade()" style="background:transparent;border:1px solid rgba(255,255,255,0.1);color:#5a7a8a;padding:6px 20px;border-radius:30px;cursor:pointer;font-size:14px;letter-spacing:1px;">✕ 返回</button>
+        </div>
         <div class="trade-item"><span class="name">精铁矿石</span><span class="price">12 金币</span></div>
         <div class="trade-item"><span class="name">星盘碎片</span><span class="price">45 金币</span></div>
         <div class="trade-item"><span class="name">古法锻造图</span><span class="price">120 金币</span></div>
         <div class="trade-item"><span class="name">祭品香烛</span><span class="price">8 金币</span></div>
         <div class="trade-item"><span class="name">· 更多商品即将上架 ·</span><span class="price">——</span></div>
-        <div class="trade-close-hint">按 ESC 关闭</div>
+        <div class="trade-close-hint" style="margin-top:20px;text-align:center;color:#3d5a78;font-size:12px;letter-spacing:1px;">按 ESC 或点击返回按钮关闭</div>
     `;
     document.getElementById('tradeOverlay').classList.add('visible');
-    STATE.tradeOpen = true; STATE.gamePaused = true;
+    STATE.tradeOpen = true;
+    STATE.gamePaused = true;
 }
 function closeTrade() {
     document.getElementById('tradeOverlay').classList.remove('visible');
