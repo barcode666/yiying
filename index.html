@@ -393,21 +393,65 @@ const BUILDINGS = [
 let trees = [];
 function generateTrees() {
     trees = [];
-    const sx = WORLD_W/2, sy = WORLD_H/2;
-    for (let i=0; i<65; i++) {
-        let x, y, valid=false, att=0;
-        while (!valid && att<100) {
-            x = 60 + Math.random()*(WORLD_W-120);
-            y = 60 + Math.random()*(WORLD_H-120);
-            if (Math.sqrt((x-sx)**2 + (y-sy)**2) > SPAWN_RADIUS) valid = true;
-            att++;
-        }
-        if (valid) trees.push({ x, y, w:64, h:64, r:10 });
+    const sx = WORLD_W / 2, sy = WORLD_H / 2;
+    const minDistToCenter = SPAWN_RADIUS;  // 200
+    const minDistToBuilding = 80;           // 建筑周围最小距离
+    const minDistToCampfire = 70;           // 篝火周围最小距离
+
+    // 收集所有障碍物（建筑 + 篝火）
+    const obstacles = [];
+    for (const b of BUILDINGS) {
+        // 使用建筑中心点作为障碍物位置
+        obstacles.push({ x: b.x + b.w / 2, y: b.y + b.h / 2, radius: minDistToBuilding });
     }
+    // 添加篝火
+    obstacles.push({ x: campfire.x, y: campfire.y, radius: minDistToCampfire });
+
+    let attempts = 0;
+    const maxAttempts = 500;
+    let placed = 0;
+
+    while (placed < 65 && attempts < maxAttempts) {
+        attempts++;
+        let x = 60 + Math.random() * (WORLD_W - 120);
+        let y = 60 + Math.random() * (WORLD_H - 120);
+
+        // 检查是否在中心出生点附近（避免挡住初始位置）
+        if (Math.sqrt((x - sx) ** 2 + (y - sy) ** 2) < minDistToCenter) continue;
+
+        // 检查是否与任何障碍物重叠
+        let overlap = false;
+        for (const obs of obstacles) {
+            const dx = x - obs.x;
+            const dy = y - obs.y;
+            if (Math.sqrt(dx * dx + dy * dy) < obs.radius) {
+                overlap = true;
+                break;
+            }
+        }
+        if (overlap) continue;
+
+        // 通过所有检查，放置树木
+        trees.push({ x, y, w: 64, h: 64, r: 10 });
+        placed++;
+    }
+
+    // 如果树木数量不足，补充一些到随机位置（但确保避开障碍物）
     while (trees.length < 50) {
-        let x = 60 + Math.random()*(WORLD_W-120);
-        let y = 60 + Math.random()*(WORLD_H-120);
-        if (Math.sqrt((x-sx)**2 + (y-sy)**2) > SPAWN_RADIUS) trees.push({ x, y, w:64, h:64, r:10 });
+        let x = 60 + Math.random() * (WORLD_W - 120);
+        let y = 60 + Math.random() * (WORLD_H - 120);
+        let overlap = false;
+        for (const obs of obstacles) {
+            const dx = x - obs.x;
+            const dy = y - obs.y;
+            if (Math.sqrt(dx * dx + dy * dy) < obs.radius) {
+                overlap = true;
+                break;
+            }
+        }
+        if (!overlap) {
+            trees.push({ x, y, w: 64, h: 64, r: 10 });
+        }
     }
 }
 
