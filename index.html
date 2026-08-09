@@ -1459,19 +1459,44 @@ function gameLoop() {
 function initMouseAttack() {
     canvas.addEventListener('click', function(e) {
         if (STATE.gamePaused) return;
-        if (STATE.isAttacking || STATE.isKnockdown) return;
-        STATE.isAttacking = true;
-        STATE.attackTimer = 0;
+
+        // 计算点击的世界坐标
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
         const mx = (e.clientX - rect.left) * scaleX;
         const my = (e.clientY - rect.top) * scaleY;
-        const wx = mx + camera.x, wy = my + camera.y;
-        const dx = wx - STATE.pos.x, dy = wy - STATE.pos.y;
-        if (Math.abs(dx) > Math.abs(dy)) STATE.facingDir = dx > 0 ? 'right' : 'left';
-        else STATE.facingDir = dy > 0 ? 'down' : 'up';
-        attackMonsters();
-        STATE.attackCooldown = 15;
+        const wx = mx + camera.x;
+        const wy = my + camera.y;
+
+        // 先检测是否点击了建筑
+        let buildingClicked = false;
+        for (const b of BUILDINGS) {
+            // 判断点是否在建筑矩形内
+            if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
+                buildingClicked = true;
+                // 执行与F键相同的交互逻辑
+                if (b.type === 'blacksmith') {
+                    openDialog();
+                } else {
+                    showFloatMessage('你来到了 ' + b.label, 'system');
+                }
+                break;
+            }
+        }
+
+        // 如果没有点击建筑，则执行攻击
+        if (!buildingClicked) {
+            if (STATE.isAttacking || STATE.isKnockdown) return;
+            STATE.isAttacking = true;
+            STATE.attackTimer = 0;
+            const dx = wx - STATE.pos.x;
+            const dy = wy - STATE.pos.y;
+            if (Math.abs(dx) > Math.abs(dy)) STATE.facingDir = dx > 0 ? 'right' : 'left';
+            else STATE.facingDir = dy > 0 ? 'down' : 'up';
+            attackMonsters();
+            STATE.attackCooldown = 15;
+        }
     });
 }
 
