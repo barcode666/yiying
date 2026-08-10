@@ -290,12 +290,7 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 // 全局状态 & 动画ID
 // ============================================================
 const PATH_THRESHOLD = 0.5;
-function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr) {
-    const nearX = Math.max(rx, Math.min(cx, rx + rw));
-    const nearY = Math.max(ry, Math.min(cy, ry + rh));
-    const dx = cx - nearX, dy = cy - nearY;
-    return dx * dx + dy * dy < cr * cr;
-}
+
 // 判断世界坐标 (wx, wy) 是否在草地上（即非黄土）
 function isGrass(wx, wy) {
     const col = Math.floor(wx / TILE_SIZE);
@@ -324,7 +319,16 @@ const CLIFF_SPRITES = {
    slope:  { sx: 0, sy: 48, sw: 48, sh: 32 },   // 草坡：中间 48x32
     path:   { sx: 0, sy: 80, sw: 48, sh: 16 }    // 草路：最下 48x16
 };
-
+// ---- 仓库副本 ----
+const DUNGEON = {
+    width: 700,
+    height: 550,
+    x: 0, y: 0,  // 房间左上角世界坐标（实际不用，因为房间是独立的）
+    exitX: 650, exitY: 500, // 出口位置（房间内坐标）
+};
+let inDungeon = false;       // 是否在副本中
+let savedWorldPos = null;    // 保存进入前的位置
+let dungeonBoss = null;      // Boss 对象
 let animationId = null;
 const STATE = {
     player: { name: '无名旅者', stats: { 筋骨: 0, 智谋: 0, 体魄: 0 }, trait: null, traitLocked: true,job: '散人',           },
@@ -421,7 +425,7 @@ const JOB_CONFIG = {
 // ============================================================
 const BUILDINGS = [
     { x: 300, y: 250, w: 96, h: 80, label: '铁匠铺', type: 'blacksmith' },
-    { x: 800, y: 1300, w: 110, h: 90, label: '仓库' },
+     { x: 800, y: 1300, w: 110, h: 90, label: '仓库', type: 'warehouse' },
     { x: 1500, y: 400, w: 90, h: 100, label: '哨塔' },
     { x: 1800, y: 1000, w: 110, h: 80, label: '工坊' },
     { x: 200, y: 1500, w: 90, h: 70, label: '磨坊' }
@@ -518,6 +522,15 @@ function generateExtraTerrain() {
     const TILE = 16;
     const WORLD_COLS = Math.floor(WORLD_W / TILE);
     const WORLD_ROWS = Math.floor(WORLD_H / TILE);
+     // ---- 新增：出生点避让 ----
+    const spawnX = WORLD_W / 2;
+    const spawnY = WORLD_H / 2;
+    const spawnRadius = 200;
+    function isNearSpawn(wx, wy) {
+        const dx = wx - spawnX;
+        const dy = wy - spawnY;
+        return dx * dx + dy * dy < spawnRadius * spawnRadius;
+    }
 
     // ---- 收集固定障碍（建筑和树木） ----
     const fixedObstacles = [];
@@ -561,16 +574,17 @@ function generateExtraTerrain() {
             const col = Math.floor(Math.random() * (WORLD_COLS - 6));
             const row = Math.floor(Math.random() * (WORLD_ROWS - 6));
             const x = col * TILE, y = row * TILE;
+             if (isNearSpawn(x + 48, y + 48)) continue; 
             if (isAllGrass(x, y, 96, 96) && !isBlocked(x, y, 96, 96, fixedObstacles)) {
-    extraObjects.push({
+                extraObjects.push({
     type: 'hollow',
     x, y, w: 96, h: 96,
-    collisionX: x + 24, collisionY: y + 30, collisionW: 48, collisionH: 42 
+    collisionX: x + 24, collisionY: y + 30, collisionW: 48, collisionH: 36
 });
-fixedObstacles.push({ x: x + 24, y: y + 24, w: 48, h: 48 });
-    placed = true;
-    break;
-}
+                fixedObstacles.push({ x, y, w: 96, h: 96 });
+                placed = true;
+                break;
+            }
         }
         if (!placed) console.warn('草坑生成失败');
     }
@@ -583,13 +597,17 @@ fixedObstacles.push({ x: x + 24, y: y + 24, w: 48, h: 48 });
             const col = Math.floor(Math.random() * (WORLD_COLS - 3));
             const row = Math.floor(Math.random() * (WORLD_ROWS - 2));
             const x = col * TILE, y = row * TILE;
-           if (isAllGrass(x, y, 48, 32) && !isBlocked(x, y, 48, 32, fixedObstacles)) {
+            if (isNearSpawn(x + 24, y + 16)) continue;
+            if (isAllGrass(x, y, 48, 32) && !isBlocked(x, y, 48, 32, fixedObstacles)) {
     extraObjects.push({
-        type: 'slope',
-        x, y, w: 48, h: 32,
-        collisionX: x + 12, collisionY: y + 11, collisionW: 24, collisionH: 12 
-    });
-    fixedObstacles.push({ x: x + 12, y: y + 8, w: 24, h: 16 });
+    type: 'slope',   // 或 'path_slope'
+    x, y, w: 48, h: 32,
+    collisionX: x + 20,
+    collisionY: y + 25,
+    collisionW: 1,
+    collisionH: 1
+});
+fixedObstacles.push({ x: x + 16, y: y + 10, w: 16, h: 12 });
     placed = true;
     break;
 }
@@ -835,39 +853,47 @@ fixedObstacles.push({ x: x + 24, y: y + 24, w: 48, h: 48 });
             const col = Math.floor(Math.random() * (WORLD_COLS - 6));
             const row = Math.floor(Math.random() * (WORLD_ROWS - 6));
             const x = col * TILE, y = row * TILE;
+             // 避让出生点
+            if (isNearSpawn(x + 48, y + 48)) continue;
             if (isAllGrass(x, y, 96, 96) && !isBlocked(x, y, 96, 96, fixedObstacles)) {
-    extraObjects.push({
-        type: 'grass_hollow',
-        x, y, w: 96, h: 96,
-        collisionX: x + 24, collisionY: y + 30, collisionW: 48, collisionH: 42 
-    });
-    fixedObstacles.push({ x: x + 24, y: y + 24, w: 48, h: 48 });
-    placed = true;
-    break;
-}
+                extraObjects.push({
+    type: 'grass_hollow',
+    x, y, w: 96, h: 96,
+    collisionX: x + 32, collisionY: y + 32, collisionW: 32, collisionH: 32
+});
+fixedObstacles.push({ x: x + 32, y: y + 32, w: 32, h: 32 });
+                placed = true;
+                break;
+            }
         }
         if (!placed) console.warn('草土坑生成失败');
     }
 
-    // ---- 6b. 土草坡（黄土上的坡，使用 Path_Tile.png 的坡区域，只在黄土） ----
-    const pathSlopeCount = 3 + Math.floor(Math.random() * 3);
+     // ---- 土草坡（黄土上的坡，只在黄土） ----
+    const pathSlopeCount = 5 + Math.floor(Math.random() * 4); // 5~8个
     for (let i = 0; i < pathSlopeCount; i++) {
         let placed = false;
         for (let attempt = 0; attempt < 50; attempt++) {
             const col = Math.floor(Math.random() * (WORLD_COLS - 3));
             const row = Math.floor(Math.random() * (WORLD_ROWS - 2));
             const x = col * TILE, y = row * TILE;
-            // 黄土区域：不是全部草地（即含有黄土）
-            if (!isAllGrass(x, y, 48, 32) && !isBlocked(x, y, 48, 32, fixedObstacles)) {
-    extraObjects.push({
-        type: 'path_slope',
-        x, y, w: 48, h: 32,
-        collisionX: x + 12, collisionY: y + 11, collisionW: 24, collisionH: 12  
-    });
-    fixedObstacles.push({ x: x + 12, y: y + 8, w: 24, h: 16 });
-    placed = true;
-    break;
-}
+            // 检测中心点是否为黄土（!isGrass）
+            const cx = x + 24, cy = y + 16;
+                        // 避让出生点（中心点）
+            if (isNearSpawn(cx, cy)) continue;
+            if (!isGrass(cx, cy) && !isBlocked(x, y, 48, 32, fixedObstacles)) {
+                extraObjects.push({
+                    type: 'path_slope',
+                     x, y, w: 48, h: 32,
+    collisionX: x + 20,
+    collisionY: y + 20,
+    collisionW: 1,
+    collisionH: 1
+});
+fixedObstacles.push({ x: x + 16, y: y + 10, w: 16, h: 12 });
+                placed = true;
+                break;
+            }
         }
         if (!placed) console.warn('土草坡生成失败');
     }
@@ -915,8 +941,8 @@ function spawnMonster() {
 // ============================================================
 // 加载图片
 // ============================================================
-const IMG = { player: null, skeleton: null, tree: null, house: null, grass: null, path: null, cliff: null, path_tile: null, water: null };
-let imagesLoaded = 0, TOTAL_IMAGES = 9;
+const IMG = { player: null, skeleton: null, tree: null, house: null, grass: null, path: null, cliff: null, path_tile: null };
+let imagesLoaded = 0, TOTAL_IMAGES = 8;
 function loadAllImages(cb) {
     function onLoad() { if (++imagesLoaded >= TOTAL_IMAGES && cb) cb(); }
     function onError(src) { console.warn('图片加载失败:', src); onLoad(); }
@@ -928,7 +954,6 @@ function loadAllImages(cb) {
     const pa = new Image(); pa.onload = onLoad; pa.onerror = ()=>onError('Path_Middle.png'); pa.src = 'assets/img/Tiles/Path_Middle.png'; IMG.path = pa;
     const cl = new Image(); cl.onload = onLoad; cl.onerror = ()=>onError('Cliff_Tile.png'); cl.src = 'assets/img/Tiles/Cliff_Tile.png'; IMG.cliff = cl;
     const pt = new Image(); pt.onload = onLoad; pt.onerror = ()=>onError('Path_Tile.png'); pt.src = 'assets/img/Tiles/Path_Tile.png'; IMG.path_tile = pt;
-    const wa = new Image(); wa.onload = onLoad; wa.onerror = ()=>onError('Water_Middle.png'); wa.src = 'assets/img/Tiles/Water_Middle.png'; IMG.water = wa;
 }
 
 // ============================================================
@@ -986,6 +1011,11 @@ document.getElementById('loginBtn').addEventListener('click', function() {
 document.addEventListener('keydown', function(e) {
     // ESC
     if (e.key === 'Escape') {
+            // ---- 副本内按 ESC 退出 ----
+    if (inDungeon) {
+        exitDungeon();
+        return;
+    }
         e.preventDefault();
         if (document.getElementById('achievementOverlay').style.display === 'flex') return;
         if (document.getElementById('chronicleOverlay').style.display === 'block') { closeChronicle(); return; }
@@ -1030,6 +1060,15 @@ document.addEventListener('keydown', function(e) {
 if (e.key === 'f' || e.key === 'F') {
     e.preventDefault();
     if (STATE.gamePaused) return;   // 防止在对话框、编年史等打开时误触
+// ---- 仓库交互 ----
+if (STATE.nearBuilding && STATE.nearBuilding.type === 'warehouse') {
+    if (STATE.job === '启示者' && chronicleRecords.length > 0) {
+        enterDungeon();  // 这里必须是 enterDungeon()
+    } else {
+        showFloatMessage('❌ 需要完成至少一次事件并转职为「启示者」', 'fail');
+    }
+    return;
+}
 
     // 优先检测篝火
     if (STATE.nearCampfire) {
@@ -1513,6 +1552,38 @@ playAchievement(
     STATE.gamePaused = true;
 }
 // ============================================================
+// 副本进入/退出
+// ============================================================
+function enterDungeon() {
+    if (inDungeon) return;
+    // 保存主世界位置
+    savedWorldPos = { x: STATE.pos.x, y: STATE.pos.y };
+    inDungeon = true;
+    // 玩家放到房间入口（左上角偏内）
+    STATE.pos.x = 60;
+    STATE.pos.y = 60;
+    // 生成 Boss
+    dungeonBoss = {
+        x: DUNGEON.width / 2,
+        y: DUNGEON.height / 2 - 20,
+        w: 64, h: 64,
+        hp: 100,
+        maxHp: 100,
+    };
+    showFloatMessage('⚔️ 进入仓库！击败暗影守卫！', 'milestone');
+}
+
+function exitDungeon() {
+    inDungeon = false;
+    if (savedWorldPos) {
+        STATE.pos.x = savedWorldPos.x;
+        STATE.pos.y = savedWorldPos.y;
+        savedWorldPos = null;
+    }
+    dungeonBoss = null;
+    showFloatMessage('已离开仓库', 'system');
+}
+// ============================================================
 // 事件处理 + 成就系统
 // ============================================================
 function handleEvent(eventId) {
@@ -1723,62 +1794,106 @@ function circleCircleCollide(x1,y1,r1,x2,y2,r2) {
     return dx*dx + dy*dy < (r1+r2)*(r1+r2);
 }
 
-function tryMove(px,py,dx,dy) {
+function tryMove(px, py, dx, dy) {
     const speed = STATE.isRunning ? STATE.speed * 1.7 : STATE.speed;
     const r = 22;
-    let newX = px + dx*speed, newY = py + dy*speed;
-    newX = Math.max(r, Math.min(WORLD_W - r, newX));
-    newY = Math.max(r, Math.min(WORLD_H - r, newY));
 
+    // ---- 副本内移动 ----
+    if (inDungeon) {
+        let newX = px + dx * speed;
+        let newY = py + dy * speed;
+        const margin = 20;
+        newX = Math.max(margin, Math.min(DUNGEON.width - margin, newX));
+        newY = Math.max(margin, Math.min(DUNGEON.height - margin, newY));
+        const pillars = [
+            {x: 10, y: 10, w: 24, h: 24},
+            {x: DUNGEON.width - 34, y: 10, w: 24, h: 24},
+            {x: 10, y: DUNGEON.height - 34, w: 24, h: 24},
+            {x: DUNGEON.width - 34, y: DUNGEON.height - 34, w: 24, h: 24}
+        ];
+        for (const p of pillars) {
+            if (rectCircleCollide(p.x, p.y, p.w, p.h, newX, newY, r)) {
+                return { x: px, y: py };
+            }
+        }
+        return { x: newX, y: newY };
+    }
+
+    // ---- 主世界移动 ----
     let finalX = px, finalY = py;
-    let testX = px + dx*speed;
+
+    // 水平移动
+    let testX = px + dx * speed;
     testX = Math.max(r, Math.min(WORLD_W - r, testX));
     let collide = false;
+
+    // 建筑碰撞
     for (const b of BUILDINGS) {
-        if (rectCircleCollide(b.x,b.y,b.w,b.h, testX, py, r)) { collide = true; break; }
-    }
-    if (!collide) {
-        for (const t of trees) {
-            if (circleCircleCollide(testX, py, r, t.x, t.y, t.r)) { collide = true; break; }
-        }
-    }
-        // 额外地形碰撞（水平移动）
-    for (const obj of extraObjects) {
-        if (obj.collisionX === undefined) continue; // 跳过无碰撞物体
-        if (rectCircleCollide(obj.collisionX, obj.collisionY, obj.collisionW, obj.collisionH, testX, py, r)) {
+        if (rectCircleCollide(b.x, b.y, b.w, b.h, testX, py, r)) {
             collide = true;
             break;
         }
+    }
+
+    // 树木碰撞
+    if (!collide) {
+        for (const t of trees) {
+            if (circleCircleCollide(testX, py, r, t.x, t.y, t.r)) {
+                collide = true;
+                break;
+            }
+        }
+    }
+
+    
+    // ---- 坑和坡碰撞（水平移动） ----
+    if (!collide) {
+        for (const obj of extraObjects) {
+    if (obj.collisionX === undefined) continue;
+    if (rectCircleCollide(obj.collisionX, obj.collisionY, obj.collisionW, obj.collisionH, testX, py, r)) {
+        collide = true;
+        break;
+    }
+}
     }
     if (!collide) finalX = testX;
 
-    let testY = py + dy*speed;
+    // 垂直移动
+    let testY = py + dy * speed;
     testY = Math.max(r, Math.min(WORLD_H - r, testY));
     collide = false;
+
+    // 建筑碰撞
     for (const b of BUILDINGS) {
-        if (rectCircleCollide(b.x,b.y,b.w,b.h, finalX, testY, r)) { collide = true; break; }
-    }
-    if (!collide) {
-        for (const t of trees) {
-            if (circleCircleCollide(finalX, testY, r, t.x, t.y, t.r)) { collide = true; break; }
-        }
-    }
-        // 额外地形碰撞（垂直移动）
-    for (const obj of extraObjects) {
-        if (obj.collisionX === undefined) continue;
-        if (rectCircleCollide(obj.collisionX, obj.collisionY, obj.collisionW, obj.collisionH, finalX, testY, r)) {
+        if (rectCircleCollide(b.x, b.y, b.w, b.h, finalX, testY, r)) {
             collide = true;
             break;
         }
     }
-    if (!collide) finalY = testY;
 
-    for (const mon of monsters) {
-        if (!mon.alive) continue;
-        if (circleCircleCollide(finalX, finalY, r, mon.x, mon.y, 16)) {
-            return { x: px, y: py };
+    // 树木碰撞
+    if (!collide) {
+        for (const t of trees) {
+            if (circleCircleCollide(finalX, testY, r, t.x, t.y, t.r)) {
+                collide = true;
+                break;
+            }
         }
     }
+
+    
+    // ---- 坑和坡碰撞（垂直移动） ----
+    if (!collide) {
+        for (const obj of extraObjects) {
+    if (obj.collisionX === undefined) continue;
+    if (rectCircleCollide(obj.collisionX, obj.collisionY, obj.collisionW, obj.collisionH, finalX, testY, r)) {
+        collide = true;
+        break;
+    }
+}
+    }
+    if (!collide) finalY = testY;
+
     return { x: finalX, y: finalY };
 }
 
@@ -1845,6 +1960,12 @@ function updateCamera() {
 function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; }
 
 function drawScene() {
+    // ---- 如果正在副本中，只绘制房间 ----
+    if (inDungeon) {
+        drawDungeon();
+        return;
+    }
+    // ... 原有的主世界绘制代码继续 ...
     if (!ctx) return;
     const W = canvasW, H = canvasH;
     updateCamera();
@@ -1865,7 +1986,6 @@ function drawScene() {
         ctx.fillRect(0, 0, canvasW, canvasH);
         return;
     }
-    
 
     // 黄土阈值，调整此值控制黄土面积（约 0.25~0.35 之间）
     const PATH_THRESHOLD = 0.5;
@@ -2147,7 +2267,101 @@ const col = anim[idx] % cfg.cols;
 
     ctx.restore();
 }
+// ============================================================
+// 副本房间绘制
+// ============================================================
+function drawDungeon() {
+    const W = canvasW, H = canvasH;
+    ctx.save();
 
+    // 1. 背景
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. 地板（网格）
+    ctx.strokeStyle = '#3a3a3a';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < DUNGEON.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+    }
+    for (let y = 0; y < DUNGEON.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+    }
+
+    // 3. 墙壁（边框）
+    ctx.strokeStyle = '#6a5a4a';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(0, 0, DUNGEON.width, DUNGEON.height);
+
+    // 4. 四角柱子
+    ctx.fillStyle = '#5a4a3a';
+    const pillar = 24;
+    ctx.fillRect(10, 10, pillar, pillar);
+    ctx.fillRect(DUNGEON.width - 10 - pillar, 10, pillar, pillar);
+    ctx.fillRect(10, DUNGEON.height - 10 - pillar, pillar, pillar);
+    ctx.fillRect(DUNGEON.width - 10 - pillar, DUNGEON.height - 10 - pillar, pillar, pillar);
+
+    // 5. 出口传送阵（右下角）
+    const ex = DUNGEON.exitX, ey = DUNGEON.exitY;
+    // 光圈
+    ctx.fillStyle = 'rgba(0, 200, 255, 0.2)';
+    ctx.beginPath();
+    ctx.arc(ex + 20, ey + 20, 35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#aaf';
+    ctx.font = '18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⬆ 出口', ex + 20, ey - 10);
+
+    // 6. Boss
+    if (dungeonBoss) {
+        const b = dungeonBoss;
+        const bx = b.x, by = b.y;
+        // 使用骷髅精灵
+        if (IMG.skeleton && IMG.skeleton.complete) {
+            ctx.drawImage(IMG.skeleton, 0, 0, 32, 32, bx - 32, by - 48, 64, 64);
+        } else {
+            ctx.fillStyle = '#c44';
+            ctx.fillRect(bx - 20, by - 30, 40, 60);
+        }
+        // Boss 血条
+        const hpPercent = b.hp / b.maxHp;
+        ctx.fillStyle = '#222';
+        ctx.fillRect(bx - 40, by - 60, 80, 10);
+        ctx.fillStyle = hpPercent > 0.5 ? '#0f0' : (hpPercent > 0.2 ? '#ff0' : '#f00');
+        ctx.fillRect(bx - 40, by - 60, 80 * hpPercent, 10);
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx - 40, by - 60, 80, 10);
+        // Boss 名称
+        ctx.fillStyle = '#ff8844';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚔ 暗影守卫', bx, by - 72);
+    }
+
+    // 7. 玩家（在副本中始终绘制在房间内）
+    const px = STATE.pos.x, py = STATE.pos.y;
+    if (IMG.player && IMG.player.complete) {
+        ctx.drawImage(IMG.player, 0, 0, 32, 32, px - 16, py - 32, 32, 32);
+    } else {
+        ctx.fillStyle = '#6af';
+        ctx.fillRect(px - 12, py - 24, 24, 24);
+    }
+
+    ctx.restore();
+}
 function updateAnimation() {
     // ---- 倒地状态 ----
     if (STATE.isKnockdown) {
@@ -2286,6 +2500,24 @@ function gameLoop() {
         }
         updateMonsters();
         if (STATE.attackCooldown > 0) STATE.attackCooldown--;
+            // ---- Boss AI（副本内） ----
+    if (inDungeon && dungeonBoss && dungeonBoss.hp > 0) {
+        const boss = dungeonBoss;
+        const dx = STATE.pos.x - boss.x;
+        const dy = STATE.pos.y - boss.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > 40 && dist < 200) {
+            boss.x += (dx/dist) * 0.5;
+            boss.y += (dy/dist) * 0.5;
+        }
+        if (dist < 50 && boss.attackCooldown === undefined) {
+            boss.attackCooldown = 30;
+            showFloatMessage('💥 Boss 攻击！', 'fail');
+        }
+        if (boss.attackCooldown !== undefined && boss.attackCooldown > 0) {
+            boss.attackCooldown--;
+        }
+    }
         updatePlayer();
     }
     drawScene(); // 无条件绘制，保证画面不黑
