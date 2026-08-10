@@ -96,11 +96,11 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 #dialogOverlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:60;background:rgba(0,0,0,.75)}
 #dialogOverlay .dialog-bg{width:100%;height:100%;background-image:url('assets/img/background/iron.png');background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;position:relative}
 #dialogOverlay .dialog-shade{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4)}
-#dialogOverlay .dialog-content{position:relative;z-index:2;background:rgba(10,18,30,0.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:30px 40px;min-height:45%;border-top:1px solid rgba(255,255,255,0.08);border-radius:0 0 12px 12px;display:flex;flex-direction:column;justify-content:center;align-items:center}
-#dialogOverlay .dialog-title{font-size:28px;color:#ffd700;font-weight:300;letter-spacing:4px;margin-bottom:10px}
-#dialogOverlay .dialog-question{margin-bottom:30px;text-align:center;color:#e8f0ff;font-size:20px}
+#dialogOverlay .dialog-content{position:relative;z-index:2;background:rgba(255,255,255,0.15);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:30px 40px;min-height:45%;border-top:1px solid rgba(255,255,255,0.08);border-radius:0 0 12px 12px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+#dialogOverlay .dialog-title{font-size:28px;color:#ffd700;font-weight:700;letter-spacing:4px;margin-bottom:10px;}
+#dialogOverlay .dialog-question{margin-bottom:30px;text-align:center;color:#e8f0ff;font-size:20px;font-weight:700;}
 #dialogOverlay .dialog-buttons{display:flex;gap:50px;margin-top:10px}
-#dialogOverlay .dialog-buttons button{padding:14px 50px;font-size:20px;font-weight:500;border-radius:12px;cursor:pointer;transition:.2s;box-shadow:0 4px 20px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.1)}
+#dialogOverlay .dialog-buttons button{padding:14px 50px;font-size:20px;font-weight:600;border-radius:12px;cursor:pointer;transition:.2s;box-shadow:0 4px 20px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.1)}
 #dialogOverlay .dialog-buttons .btn-yes{background:linear-gradient(135deg,#2a5a8a,#1a3a6a);color:#fff;border-color:rgba(100,180,255,.3)}
 #dialogOverlay .dialog-buttons .btn-yes:hover{transform:scale(1.05);box-shadow:0 0 30px rgba(40,120,255,.3)}
 #dialogOverlay .dialog-buttons .btn-no{background:linear-gradient(135deg,#5a4a3a,#3a2a1a);color:#d0c8b0;border-color:rgba(200,180,160,.2)}
@@ -237,6 +237,11 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 <div id="floatMessage"></div>
 <div id="menuButton" onclick="toggleHUD()"><span class="gear-icon">⚙</span><span class="esc-label">ESC</span></div>
 <div id="joystickZone"><div id="joystickBase"><div id="joystickKnob"></div></div></div>
+<!-- 技能图标按钮（右下角） -->
+<div id="skillIconContainer" style="position:absolute; bottom:180px; right:24px; z-index:15; width:60px; height:60px; border-radius:12px; border:2px solid rgba(255,255,255,0.3); background:rgba(0,0,0,0.5); cursor:pointer; overflow:hidden; display:flex; align-items:center; justify-content:center; pointer-events:auto;" onclick="useSkill()">
+    <img id="skillIconImg" src="assets/skill/90.webp" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none';">
+    <div id="skillCooldownOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; color:#fff; font-size:20px; font-weight:bold;">8</div>
+</div>
 <!-- 玩家状态：头像 + 血条 -->
 <div id="playerStatus" style="position:absolute; top:16px; left:70px; z-index:15; display:flex; align-items:center; gap:10px; pointer-events:none;">
     <!-- 方形头像 -->
@@ -406,6 +411,20 @@ const STATE = {
     attackTimer: 0,
     knockdownTimer: 0,
     attackCooldown: 0,
+    skill: {
+    fireball: {
+        unlocked: false,
+        cooldown: 0,
+        maxCooldown: 480 // 8秒 (60帧/秒 * 8)
+    }
+},
+skillAnimating: false,
+skillFrame: 0,
+skillTimer: 0,
+skillX: 0,
+skillY: 0,
+skillDir: 'down',
+skillDamageDealt: false,
 };
 const WORLD_W = 2000, WORLD_H = 2000;
 const camera = { x: 0, y: 0 };
@@ -991,8 +1010,8 @@ function spawnMonster() {
 // ============================================================
 // 加载图片
 // ============================================================
-const IMG = { player: null, skeleton: null, tree: null, house: null, grass: null, path: null, cliff: null, path_tile: null };
-let imagesLoaded = 0, TOTAL_IMAGES = 8;
+const IMG = { player: null, skeleton: null, tree: null, house: null, grass: null, path: null, cliff: null, path_tile: null, fireball: null, skillIcon: null };
+let imagesLoaded = 0, TOTAL_IMAGES = 10;
 function loadAllImages(cb) {
     function onLoad() { if (++imagesLoaded >= TOTAL_IMAGES && cb) cb(); }
     function onError(src) { console.warn('图片加载失败:', src); onLoad(); }
@@ -1004,6 +1023,23 @@ function loadAllImages(cb) {
     const pa = new Image(); pa.onload = onLoad; pa.onerror = ()=>onError('Path_Middle.png'); pa.src = 'assets/img/Tiles/Path_Middle.png'; IMG.path = pa;
     const cl = new Image(); cl.onload = onLoad; cl.onerror = ()=>onError('Cliff_Tile.png'); cl.src = 'assets/img/Tiles/Cliff_Tile.png'; IMG.cliff = cl;
     const pt = new Image(); pt.onload = onLoad; pt.onerror = ()=>onError('Path_Tile.png'); pt.src = 'assets/img/Tiles/Path_Tile.png'; IMG.path_tile = pt;
+    // 技能火球（12列1行）
+    const fb = new Image();
+    fb.onload = function() {
+        fb.frameWidth = fb.naturalWidth / 12;
+        fb.frameHeight = fb.naturalHeight;
+        onLoad();
+    };
+    fb.onerror = ()=>onError('Fire_03.png');
+    fb.src = 'assets/skill/Fire_03.png';
+    IMG.fireball = fb;
+
+    // 技能图标
+    const si = new Image();
+    si.onload = onLoad;
+    si.onerror = ()=>onError('90.webp');
+    si.src = 'assets/skill/90.webp';
+    IMG.skillIcon = si;
 }
 
 // ============================================================
@@ -1044,17 +1080,27 @@ document.getElementById('loginBtn').addEventListener('click', function() {
     startTransition(() => {
         switchPage('gamePage');
         loadAllImages(() => {
-            const loaded = loadGame(); // 尝试加载存档
-            if (!loaded) {
-                generateNewCharacter(); // 没有存档或加载失败则新建
-            }
-            renderAll();
-            initGameCanvas(); // 注意：initGameCanvas 需要支持加载的数据
-            for (let i=0; i<MAX_MONSTERS; i++) spawnMonster();
-            gameLoop();
-            setHUDVisible(false);
-            closeTrade();
-        });
+    // ---- 先重置 STATE.player，防止残留 ----
+    STATE.player = {
+        name: '无名旅者',
+        stats: { 筋骨: 0, 智谋: 0, 体魄: 0 },
+        trait: null,
+        traitLocked: true,
+        job: '散人',
+        hp: 100,
+        maxHp: 100
+    };
+    const loaded = loadGame();
+    if (!loaded) {
+        generateNewCharacter();
+    }
+    renderAll();
+    initGameCanvas();
+    for (let i=0; i<MAX_MONSTERS; i++) spawnMonster();
+    gameLoop();
+    setHUDVisible(false);
+    closeTrade();
+});
     });
 });
 
@@ -1177,8 +1223,14 @@ if (e.key === ' ') {
         }
     }
     return;
+    
 }
-
+// Q 键释放技能
+if (e.key === 'q' || e.key === 'Q') {
+    e.preventDefault();
+    useSkill();
+    return;
+}
    
 
     // ===== 核心修复：处理 WASD 移动 =====
@@ -1204,7 +1256,81 @@ document.addEventListener('keyup', function(e) {
 // ============================================================
 function toggleHUD() { setHUDVisible(!STATE.hudVisible); }
 function setHUDVisible(v) { STATE.hudVisible = v; STATE.gamePaused = v; document.getElementById('hudOverlay').classList.toggle('visible', v); }
+function useSkill() {
+    if (STATE.skillAnimating) return;
+    if (!STATE.skill.fireball.unlocked) {
+        showFloatMessage('❌ 技能未解锁', 'fail');
+        return;
+    }
+    if (STATE.skill.fireball.cooldown > 0) {
+        showFloatMessage(`⏳ 冷却中 (${Math.ceil(STATE.skill.fireball.cooldown/60)}s)`, 'system');
+        return;
+    }
+    if (STATE.isKnockdown) return;
 
+    // ---- 计算技能释放位置（玩家前方偏移） ----
+    const offsetDist = 60;
+let ox = 0, oy = 0;
+switch (STATE.facingDir) {
+    case 'down':  
+        oy = offsetDist; 
+        break;
+    case 'up':    
+        oy = -offsetDist - 20; 
+        break;
+    case 'right': 
+        ox = offsetDist; 
+        oy = -15; // 向上偏移 15 像素
+        break;
+    case 'left':  
+        ox = -offsetDist; 
+        oy = -15; // 向上偏移 15 像素
+        break;
+}
+STATE.skillX = STATE.pos.x + ox;
+STATE.skillY = STATE.pos.y + oy;
+
+    STATE.skillAnimating = true;
+    STATE.skillFrame = 0;
+    STATE.skillTimer = 0;
+    STATE.skillDamageDealt = false;
+    STATE.skillDir = STATE.facingDir;
+    STATE.skill.fireball.cooldown = STATE.skill.fireball.maxCooldown;
+    showFloatMessage('🔥 豪火球之术！', 'milestone');
+}
+function dealSkillDamage() {
+    const range = 150;
+    const damageMin = 20, damageMax = 30;
+
+    // 对普通怪物造成伤害（主世界）
+    for (const mon of monsters) {
+        if (!mon.alive) continue;
+        const dx = mon.x - STATE.skillX;
+        const dy = mon.y - STATE.skillY;
+        if (dx*dx + dy*dy < range*range) {
+            mon.state = 'knockdown';
+            mon.frameTimer = 0;
+            showFloatMessage(`🔥 消灭了一只骷髅！`, 'success');
+        }
+    }
+
+    // 对 Boss 造成伤害（副本内）
+    if (inDungeon && dungeonBoss && dungeonBoss.state === 'alive') {
+        const dx = dungeonBoss.x - STATE.skillX;
+        const dy = dungeonBoss.y - STATE.skillY;
+        if (dx*dx + dy*dy < range*range) {
+            const dmg = damageMin + Math.floor(Math.random() * (damageMax - damageMin + 1));
+            dungeonBoss.hp -= dmg;
+            showFloatMessage(`🔥 Boss 受到 ${dmg} 点伤害！`, 'system');
+            if (dungeonBoss.hp <= 0) {
+                dungeonBoss.hp = 0;
+                dungeonBoss.state = 'dying';
+                dungeonBoss.deathTimer = 0;
+                showFloatMessage('🏆 Boss 被击败！', 'milestone');
+            }
+        }
+    }
+}
 // 浮动消息
 let floatTimeout = null;
 function showFloatMessage(text, type) {
@@ -1230,18 +1356,26 @@ function clamp(value, min, max) {
 }
 // 核心游戏逻辑
 function generateNewCharacter() {
+    // ---- 重置 player 对象，避免残留 ----
+    STATE.player = {
+        name: '无名旅者',
+        stats: { 筋骨: 0, 智谋: 0, 体魄: 0 },
+        trait: null,
+        traitLocked: true,
+        job: '散人',
+        hp: 100,
+        maxHp: 100
+    };
     document.getElementById('playerNameLabel').textContent = STATE.player.name;
-    const mean = 60;      // 基准线
-    const sigma = 15;     // 标准差，可根据需要调整（如 10、20）
+    const mean = 60;
+    const sigma = 15;
     const stats = {};
     for (const key of ['筋骨', '智谋', '体魄']) {
         let raw = normalRandom(mean, sigma);
-        // 四舍五入取整，并裁剪到 [10, 110] 避免极端值
         let val = Math.round(raw);
         val = clamp(val, 10, 110);
         stats[key] = val;
     }
-
     const trait = TRAIT_POOL[Math.floor(Math.random() * TRAIT_POOL.length)];
     STATE.player.stats = stats;
     STATE.player.trait = trait;
@@ -1253,8 +1387,16 @@ function generateNewCharacter() {
     document.getElementById('eyeBtn').textContent = '👁 激活视界';
     renderAll();
     STATE.player.hp = 100;
-STATE.player.maxHp = 100;
-updateHealthBar(); // 更新血条显示
+    STATE.player.maxHp = 100;
+    updateHealthBar();
+    // 重置技能状态
+    STATE.skill = {
+        fireball: {
+            unlocked: false,
+            cooldown: 0,
+            maxCooldown: 480
+        }
+    };
     showFloatMessage('你降生于这片古老大地上。', 'system');
     closeTrade();
 }
@@ -1262,6 +1404,17 @@ function renderAll() {
     renderStats();
     renderTrait();
     renderJob(); // 添加这一行
+    updateSkillIconVisibility(); // 添加这一行
+}
+function updateSkillIconVisibility() {
+    const container = document.getElementById('skillIconContainer');
+    if (!container) return;
+    // 如果技能已解锁，显示；否则隐藏
+    if (STATE.skill && STATE.skill.fireball && STATE.skill.fireball.unlocked) {
+        container.style.display = 'flex';
+    } else {
+        container.style.display = 'none';
+    }
 }
 function updateHealthBar() {
     const hp = STATE.player.hp;
@@ -1467,6 +1620,46 @@ document.getElementById('payCancelBtn').addEventListener('click', function() {
 // 铁匠铺对话（两步对话）
 // ============================================================
 function openDialog() {
+   // 检查是否已完成锻造事件
+const forgeCompleted = chronicleRecords.some(rec => rec.title === '制造马镫');
+if (forgeCompleted) {
+    // 设置铁匠铺背景
+    document.querySelector('#dialogOverlay .dialog-bg').style.backgroundImage = "url('assets/img/background/iron.png')";
+    document.querySelector('#dialogOverlay .dialog-title').innerHTML = '⚒️ 铁匠铺';
+
+    // ---- 随机聊天台词 ----
+    const chatLines = [
+    '「今天怎么样」',
+    '「往东南方走走，那里说不定会有马」',
+    '「听说仓库里有不得了的东西」',
+    '「其实你长得还蛮帅的嘛」',
+    '「最近总在篝火那听到奇怪的声音」',
+    '「打铁要的是耐心，不过用在别处也不错。」',
+    '「你这身行头，不像本地人啊。」',
+    '「仓库那边最近老有动静，你可小心点。」',
+    '「马镫你要是用不上，拿回来我还能改改。」',
+    '「你走南闯北的，见过会喷火的怪物吗？」',
+    '「晚上别乱走，有些事白天看不出来。」',
+    '「你要是见到一个全身黑袍的人，离他远点。」'
+];
+    const randomLine = chatLines[Math.floor(Math.random() * chatLines.length)];
+
+    const qHTML = `
+        <div style="font-size:20px;color:#e8f0ff;margin:10px 0;">🔨 唐好好：${randomLine}</div>
+    `;
+    document.querySelector('#dialogOverlay .dialog-question').innerHTML = qHTML;
+    const yesBtn = document.getElementById('dialogYes');
+    const noBtn = document.getElementById('dialogNo');
+    yesBtn.style.display = 'none';
+    noBtn.style.display = 'inline-block';
+    noBtn.textContent = '离开';
+    noBtn.className = 'btn-no';
+    noBtn.onclick = function() { closeDialog(); showFloatMessage('你离开了铁匠铺。','system'); };
+    document.getElementById('dialogOverlay').style.display = 'block';
+    STATE.gamePaused = true;
+    return;
+}
+// 下面是原有的未完成流程...
     // 设置铁匠铺背景
     document.querySelector('#dialogOverlay .dialog-bg').style.backgroundImage = "url('assets/img/background/iron.png')";
      document.querySelector('#dialogOverlay .dialog-title').innerHTML = '⚒️ 铁匠铺';
@@ -1500,7 +1693,7 @@ function openDialog() {
 
         let html = '';
         if (!isQualified) {
-            html = `<div style="font-size:20px;color:#e8a0a0;">🔨 铁匠：「这里没你的事，走吧。」</div>`;
+            html = `<div style="font-size:20px;color:#e8a0a0;">🔨 唐好好：「这里没你的事，走吧。」</div>`;
             yesBtn.style.display = 'none';
             noBtn.style.display = 'inline-block';
             noBtn.textContent = '✕ 离开';
@@ -1508,7 +1701,7 @@ function openDialog() {
             noBtn.onclick = function() { closeDialog(); showFloatMessage('你转身离开了铁匠铺。','system'); };
         } else {
             html = `
-                <div style="font-size:18px;color:#e8f0ff;">🔨 铁匠：「来得正好，我需要人帮忙制造马镫。」</div>
+                <div style="font-size:18px;color:#e8f0ff;">🔨 唐好好：「来得正好，我需要人帮忙制造马镫。」</div>
                 <div style="margin:16px 0;font-size:16px;color:#8ac4ff;letter-spacing:1px;">
                     需要 <strong style="color:#ffdd44;">${ev.primaryStat}</strong> ｜ 掷骰 ≥ <strong style="color:#ffdd44;">${Math.round(finalDiff)}</strong>
                 </div>
@@ -1605,6 +1798,8 @@ function openCampfireDialog() {
         // 执行转职
         STATE.player.stats.智谋 += 10;
         STATE.job = '启示者';
+        STATE.skill.fireball.unlocked = true;
+        updateSkillIconVisibility(); // 转职成功后立即显示技能图标
         renderStats();
         renderJob();
 
@@ -1732,7 +1927,7 @@ let achievementSound = document.getElementById('achievementSound');
 let achievementOverlay = document.getElementById('achievementOverlay');
 let isAchievementPlaying = false;
 
-function playAchievement(videoSrc = 'assets/video/1.mp4', onComplete = null, showOverlay = true, overlayTitle = '✦ 完成事件 ✦', overlayDesc = '已将您的丰功伟绩同步到Project：Chronicle') {
+function playAchievement(videoSrc = 'assets/video/1.mp4', onComplete = null, showOverlay = true, overlayTitle = '✦ 完成事件 ✦', overlayDesc = '已将您的功绩同步到Project：Chronicle') {
     if (isAchievementPlaying) return;
     isAchievementPlaying = true;
     STATE.gamePaused = true;
@@ -1942,19 +2137,44 @@ function loadGame() {
     if (!raw) return false;
     try {
         const data = JSON.parse(raw);
+        // ---- 数据有效性检查 ----
+        if (!data.player || typeof data.player !== 'object') {
+            console.warn('存档缺少 player 对象，清除坏存档');
+            localStorage.removeItem('chronicle_save');
+            return false;
+        }
+        const stats = data.player.stats;
+        const validStats = (stats && 
+            typeof stats.筋骨 === 'number' && !isNaN(stats.筋骨) &&
+            typeof stats.智谋 === 'number' && !isNaN(stats.智谋) &&
+            typeof stats.体魄 === 'number' && !isNaN(stats.体魄) &&
+            (stats.筋骨 > 0 || stats.智谋 > 0 || stats.体魄 > 0));
+        if (!validStats) {
+            console.warn('存档属性无效，清除坏存档');
+            localStorage.removeItem('chronicle_save');
+            return false;
+        }
+        if (!data.player.trait || typeof data.player.trait !== 'object') {
+            console.warn('存档 trait 无效，清除坏存档');
+            localStorage.removeItem('chronicle_save');
+            return false;
+        }
+        // ---- 数据有效，执行加载 ----
         STATE.player = data.player;
-        STATE.hasPaid = data.hasPaid;
+        STATE.hasPaid = data.hasPaid || false;
         STATE.job = data.job || '散人';
-        STATE.pos = data.pos;
+        STATE.pos = data.pos || { x: WORLD_W / 2, y: WORLD_H / 2 };
         chronicleRecords = data.chronicleRecords || [];
         bossDefeated = data.bossDefeated || false;
         trees = data.trees || [];
         extraObjects = data.extraObjects || [];
         let cf = data.campfire;
-if (!cf || (cf.x === 0 && cf.y === 0) || typeof cf.x !== 'number') {
-    cf = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
-}
-campfire = cf;
+        if (!cf || (cf.x === 0 && cf.y === 0) || typeof cf.x !== 'number') {
+            cf = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
+        }
+        campfire = cf;
+        // 确保玩家名称
+        document.getElementById('playerNameLabel').textContent = STATE.player.name || '无名旅者';
         renderAll();
         updateHealthBar();
         document.getElementById('eyeBtn').className = STATE.hasPaid ? 'btn-eye paid' : 'btn-eye';
@@ -1962,7 +2182,9 @@ campfire = cf;
         showFloatMessage('📂 存档加载成功', 'system');
         return true;
     } catch (e) {
-        showFloatMessage('⚠️ 存档损坏', 'fail');
+        console.warn('存档读取异常，清除坏存档', e);
+        localStorage.removeItem('chronicle_save');
+        showFloatMessage('⚠️ 存档损坏，已清除', 'fail');
         return false;
     }
 }
@@ -2519,6 +2741,26 @@ for (const mon of monsters) {
         mon.frameIndex = (mon.frameIndex + 1) % 6;
     }
 }
+// ---- 绘制技能特效（主世界） ----
+    if (STATE.skillAnimating && IMG.fireball && IMG.fireball.complete) {
+        const sp = worldToScreen(STATE.skillX, STATE.skillY);
+        const frameW = IMG.fireball.frameWidth || 64;
+const frameH = IMG.fireball.frameHeight || 64;
+const sx = (STATE.skillFrame % 12) * frameW;
+const sy = 0;
+const scale = 2; // 放大倍数
+const drawW = frameW * scale;
+const drawH = frameH * scale;
+ctx.save();
+ctx.translate(sp.x, sp.y);
+let angle = 0;
+if (STATE.skillDir === 'down') angle = Math.PI;
+else if (STATE.skillDir === 'right') angle = Math.PI / 2;
+else if (STATE.skillDir === 'left') angle = -Math.PI / 2;
+ctx.rotate(angle);
+ctx.drawImage(IMG.fireball, sx, sy, frameW, frameH, -drawW/2, -drawH/2, drawW, drawH);
+ctx.restore();
+    }
    // ---- 主角绘制 ----
 const px = STATE.pos.x, py = STATE.pos.y;
 const sp = worldToScreen(px, py);
@@ -2586,7 +2828,7 @@ if (IMG.player && IMG.player.complete && IMG.player.naturalWidth > 0) {
     ctx.fillStyle = '#6a9ac0';
     ctx.fillRect(sp.x - 16, sp.y - 32, 32, 32);
 }
-
+    
     ctx.restore();
 }
 // ============================================================
@@ -2725,7 +2967,27 @@ if (dungeonBoss) {
         ctx.fillText('⚔ 暗影守卫', offsetX + bx, offsetY + by - 72);
     }
 }
-
+// ---- 绘制技能特效（副本内） ----
+    if (STATE.skillAnimating && IMG.fireball && IMG.fireball.complete) {
+        const frameW = IMG.fireball.frameWidth || 64;
+const frameH = IMG.fireball.frameHeight || 64;
+const sx = (STATE.skillFrame % 12) * frameW;
+const sy = 0;
+const scale = 2;
+const drawW = frameW * scale;
+const drawH = frameH * scale;
+const drawX = offsetX + STATE.skillX;
+const drawY = offsetY + STATE.skillY;
+ctx.save();
+ctx.translate(drawX, drawY);
+let angle = 0;
+if (STATE.skillDir === 'down') angle = Math.PI;
+else if (STATE.skillDir === 'right') angle = Math.PI / 2;
+else if (STATE.skillDir === 'left') angle = -Math.PI / 2;
+ctx.rotate(angle);
+ctx.drawImage(IMG.fireball, sx, sy, frameW, frameH, -drawW/2, -drawH/2, drawW, drawH);
+ctx.restore();
+    }
     // 7. 玩家（副本内绘制）
     const px = STATE.pos.x, py = STATE.pos.y;
     updateAnimation();
@@ -2788,7 +3050,7 @@ if (dungeonBoss) {
         ctx.fillStyle = '#6af';
         ctx.fillRect(offsetX + px - 12, offsetY + py - 24, 24, 24);
     }
-
+    
     ctx.restore();
 }
 function updateAnimation() {
@@ -2874,6 +3136,9 @@ function updateAnimation() {
 function updatePlayer() {
     if (STATE.isKnockdown) return;
     if (STATE.gamePaused) return;
+    // ---- 技能释放中禁止移动 ----
+    if (STATE.skillAnimating) return;
+    // ... 原有移动逻辑 ...
     if (STATE.isKnockdown) return;
     let dx=0, dy=0;
     if (STATE.keys.w) dy = -1;
@@ -3003,7 +3268,35 @@ if (inDungeon && dungeonBoss) {
                 }
             }
         }
+    // ---- 技能冷却递减 ----
+    if (STATE.skill.fireball.cooldown > 0) {
+        STATE.skill.fireball.cooldown--;
+        const cd = Math.ceil(STATE.skill.fireball.cooldown / 60);
+        const overlay = document.getElementById('skillCooldownOverlay');
+        if (overlay) {
+            overlay.textContent = cd > 0 ? cd : '';
+            overlay.style.display = cd > 0 ? 'flex' : 'none';
+        }
+    }
 
+    // ---- 技能动画更新 ----
+    if (STATE.skillAnimating) {
+        STATE.skillTimer++;
+        if (STATE.skillTimer >= 4) { // 每4帧切换一帧，12帧总时长约0.8秒
+            STATE.skillTimer = 0;
+            STATE.skillFrame++;
+            if (STATE.skillFrame >= 12) {
+                STATE.skillAnimating = false;
+                STATE.skillFrame = 0;
+            } else {
+                // 在第5帧造成伤害（只触发一次）
+                if (STATE.skillFrame === 5 && !STATE.skillDamageDealt) {
+                    STATE.skillDamageDealt = true;
+                    dealSkillDamage();
+                }
+            }
+        }
+    }
         updatePlayer();
     }
     drawScene();
