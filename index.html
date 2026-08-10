@@ -238,12 +238,17 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 <div id="menuButton" onclick="toggleHUD()"><span class="gear-icon">⚙</span><span class="esc-label">ESC</span></div>
 <div id="joystickZone"><div id="joystickBase"><div id="joystickKnob"></div></div></div>
 <!-- 技能图标按钮（右下角） -->
-<div id="skillIconContainer" style="position:absolute; bottom:180px; right:24px; z-index:15; width:60px; height:60px; border-radius:12px; border:2px solid rgba(255,255,255,0.3); background:rgba(0,0,0,0.5); cursor:pointer; overflow:hidden; display:flex; align-items:center; justify-content:center; pointer-events:auto;" onclick="useSkill()">
+<div id="skillIconContainer" style="position:absolute; bottom:180px; right:24px; z-index:15; width:120px; height:120px; border-radius:50%; border:none; background:rgba(0,0,0,0.3); cursor:pointer; overflow:hidden; display:flex; align-items:center; justify-content:center; pointer-events:auto;" onclick="useSkill()">
     <img id="skillIconImg" src="assets/skill/90.webp" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none';">
-    <div id="skillCooldownOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; color:#fff; font-size:20px; font-weight:bold;">8</div>
+    <div id="skillCooldownOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; color:#fff; font-size:32px; font-weight:bold;">8</div>
 </div>
 <!-- 玩家状态：头像 + 血条 -->
 <div id="playerStatus" style="position:absolute; top:16px; left:70px; z-index:15; display:flex; align-items:center; gap:10px; pointer-events:none;">
+<!-- 技能图标（右下角） -->
+<div id="skillIconContainer" style="position:absolute; bottom:180px; right:24px; z-index:15; width:120px; height:120px; border-radius:50%; border:none; background:rgba(0,0,0,0.3); cursor:pointer; overflow:hidden; display:flex; align-items:center; justify-content:center; pointer-events:auto; touch-action:manipulation;" onclick="useSkill()" ontouchstart="useSkill(); return false;">
+    <img id="skillIconImg" src="assets/skill/90.webp" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none';">
+    <div id="skillCooldownOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; color:#fff; font-size:32px; font-weight:bold;">8</div>
+</div>    
     <!-- 方形头像 -->
     <img id="playerAvatar" src="assets/img/player/JOJO.jpg" style="width:50px; height:50px; border-radius:4px; border:2px solid #fff; object-fit:cover; pointer-events:none;" onerror="this.style.display='none';">
     <!-- 右侧：名称 + 血条 -->
@@ -3357,17 +3362,24 @@ function initMouseAttack() {
         }
         // 检测是否点击了建筑
         let buildingClicked = false;
-        for (const b of BUILDINGS) {
-            if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
-                buildingClicked = true;
-                if (b.type === 'blacksmith') {
-                    openDialog();
-                } else {
-                    showFloatMessage('你来到了 ' + b.label, 'system');
-                }
-                break;
+for (const b of BUILDINGS) {
+    if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
+        buildingClicked = true;
+        if (b.type === 'blacksmith') {
+            openDialog();
+        } else if (b.type === 'warehouse') {
+            // 仓库交互：条件与 F 键一致
+            if (STATE.job === '启示者' && chronicleRecords.length > 0) {
+                enterDungeon();
+            } else {
+                showFloatMessage('❌ 需要完成至少一次事件并转职为「启示者」', 'fail');
             }
+        } else {
+            showFloatMessage('你来到了 ' + b.label, 'system');
         }
+        break;
+    }
+}
 
         if (!buildingClicked) {
             if (STATE.isAttacking || STATE.isKnockdown) return;
