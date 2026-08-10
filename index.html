@@ -210,6 +210,19 @@ body{background:#0a0c10;width:100vw;height:100vh;overflow:hidden;display:flex;ju
 <div id="floatMessage"></div>
 <div id="menuButton" onclick="toggleHUD()"><span class="gear-icon">⚙</span><span class="esc-label">ESC</span></div>
 <div id="joystickZone"><div id="joystickBase"><div id="joystickKnob"></div></div></div>
+<!-- 玩家状态：头像 + 血条 -->
+<div id="playerStatus" style="position:absolute; top:16px; left:70px; z-index:15; display:flex; align-items:center; gap:10px; pointer-events:none;">
+    <!-- 方形头像 -->
+    <img id="playerAvatar" src="assets/img/player/JOJO.jpg" style="width:50px; height:50px; border-radius:4px; border:2px solid #fff; object-fit:cover; pointer-events:none;" onerror="this.style.display='none';">
+    <!-- 右侧：名称 + 血条 -->
+    <div style="display:flex; flex-direction:column; gap:2px;">
+        <div id="playerNameLabel" style="color:#fff; font-size:14px; font-weight:bold; text-shadow:0 0 4px #000; pointer-events:none; line-height:1.2; padding-left:4px;">无名旅者</div>
+        <div id="healthBarContainer" style="width:150px; height:20px; background:rgba(0,0,0,0.6); border-radius:10px; border:1px solid #888; overflow:hidden; position:relative;">
+            <div id="healthFill" style="width:100%; height:100%; background: #4caf50; border-radius:10px; transition: width 0.2s;"></div>
+            <div id="healthText" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; color:#fff; font-size:12px; font-weight:bold; text-shadow:0 0 4px #000; pointer-events:none;">100/100</div>
+        </div>
+    </div>
+</div>
 <!-- HUD -->
 <div class="hud-overlay" id="hudOverlay">
 <div class="hud-backdrop" onclick="toggleHUD()"></div>
@@ -329,9 +342,13 @@ const DUNGEON = {
 let inDungeon = false;       // 是否在副本中
 let savedWorldPos = null;    // 保存进入前的位置
 let dungeonBoss = null;      // Boss 对象
+let bossDefeated = false; // 记录 Boss 是否已被击败
 let animationId = null;
 const STATE = {
-    player: { name: '无名旅者', stats: { 筋骨: 0, 智谋: 0, 体魄: 0 }, trait: null, traitLocked: true,job: '散人',           },
+    deathFrame: -1,   // -1 表示未倒地，0~3 表示倒地帧
+   deathTimer: 0,   // 唯一需要的变量
+    player: { name: '无名旅者', stats: { 筋骨: 0, 智谋: 0, 体魄: 0 }, trait: null, traitLocked: true,job: '散人', hp: 100,
+    maxHp: 100 },
     hasPaid: false,
     paidAnimating: false,
     pos: { x: 1000, y: 1000 },
@@ -390,7 +407,7 @@ const SPRITE = {
         attack_down: [0,1,2,3,4,5],
         attack_right: [0,1,2,3,4,5],
         attack_up: [0,1,2,3,4,5],
-        knockdown: [0,1,2,3,4,5]
+        knockdown: [0,1,2,3,]
     }
 };
 
@@ -930,12 +947,15 @@ function spawnMonster() {
     else if (side===2) { x = margin + Math.random()*(WORLD_W-2*margin); y = WORLD_H - margin; }
     else { x = margin; y = margin + Math.random()*(WORLD_H-2*margin); }
     monsters.push({
-        x, y, w:32, h:32,
-        speed: 0.3 + Math.random()*0.3,
-        state: 'idle', facingDir: 'down',
-        frameIndex: 0, frameTimer: 0, frameDelay: 10,
-        hp: 1, alive: true, attackCooldown: 0
-    });
+    x, y, w:32, h:32,
+    speed: 0.3 + Math.random()*0.3,
+    state: 'idle', facingDir: 'down',
+    frameIndex: 0, frameTimer: 0, frameDelay: 10,
+    hp: 1, alive: true,
+    attackCooldown: 0,
+    isAttacking: false,   // 新增
+    attackTimer: 0        // 新增
+});
 }
 
 // ============================================================
@@ -1011,11 +1031,7 @@ document.getElementById('loginBtn').addEventListener('click', function() {
 document.addEventListener('keydown', function(e) {
     // ESC
     if (e.key === 'Escape') {
-            // ---- 副本内按 ESC 退出 ----
-    if (inDungeon) {
-        exitDungeon();
-        return;
-    }
+            
         e.preventDefault();
         if (document.getElementById('achievementOverlay').style.display === 'flex') return;
         if (document.getElementById('chronicleOverlay').style.display === 'block') { closeChronicle(); return; }
@@ -1060,6 +1076,17 @@ document.addEventListener('keydown', function(e) {
 if (e.key === 'f' || e.key === 'F') {
     e.preventDefault();
     if (STATE.gamePaused) return;   // 防止在对话框、编年史等打开时误触
+    // ---- 副本内出口检测 ----
+    if (inDungeon) {
+        const dx = STATE.pos.x - DUNGEON.exitX;
+        const dy = STATE.pos.y - DUNGEON.exitY;
+        if (Math.sqrt(dx*dx + dy*dy) < 50) {
+            exitDungeon();
+        } else {
+            showFloatMessage('走到出口传送阵处按 F 离开', 'system');
+        }
+        return; // 副本内不执行其他交互
+    }
 // ---- 仓库交互 ----
 if (STATE.nearBuilding && STATE.nearBuilding.type === 'warehouse') {
     if (STATE.job === '启示者' && chronicleRecords.length > 0) {
@@ -1091,28 +1118,35 @@ if (STATE.nearBuilding && STATE.nearBuilding.type === 'warehouse') {
     if (e.key === 'Shift') { STATE.keys.shift = true; return; }
 
     // 空格攻击
-    if (e.key === ' ') {
-        if (dialog.style.display !== 'block') {
-            e.preventDefault();
-            if (!STATE.isAttacking && !STATE.isKnockdown) {
-                STATE.isAttacking = true;
-                STATE.attackTimer = 0;
-                showFloatMessage('⚔️ 攻击！', 'system');
-                attackMonsters();
+if (e.key === ' ') {
+    if (dialog.style.display !== 'block') {
+        e.preventDefault();
+        if (!STATE.isAttacking && !STATE.isKnockdown) {
+            // ---- 根据当前移动方向设置攻击方向 ----
+            let dx = 0, dy = 0;
+            if (STATE.keys.d) dx = 1;
+            if (STATE.keys.a) dx = -1;
+            if (STATE.keys.s) dy = 1;
+            if (STATE.keys.w) dy = -1;
+            // 如果有移动方向，更新 facingDir
+            if (dx !== 0 || dy !== 0) {
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    STATE.facingDir = dx > 0 ? 'right' : 'left';
+                } else {
+                    STATE.facingDir = dy > 0 ? 'down' : 'up';
+                }
             }
+            // 如果静止不动，保持当前 facingDir（不修改）
+            STATE.isAttacking = true;
+            STATE.attackTimer = 0;
+            showFloatMessage('⚔️ 攻击！', 'system');
+            attackMonsters();
         }
-        return;
     }
+    return;
+}
 
-    // Q 倒地
-    if (e.key === 'q' || e.key === 'Q') {
-        if (!STATE.isKnockdown && !STATE.isAttacking) {
-            STATE.isKnockdown = true;
-            STATE.knockdownTimer = 0;
-            showFloatMessage('💥 被击倒！', 'fail');
-        }
-        return;
-    }
+   
 
     // ===== 核心修复：处理 WASD 移动 =====
     const key = e.key.toLowerCase();
@@ -1163,6 +1197,7 @@ function clamp(value, min, max) {
 }
 // 核心游戏逻辑
 function generateNewCharacter() {
+    document.getElementById('playerNameLabel').textContent = STATE.player.name;
     const mean = 60;      // 基准线
     const sigma = 15;     // 标准差，可根据需要调整（如 10、20）
     const stats = {};
@@ -1184,6 +1219,9 @@ function generateNewCharacter() {
     document.getElementById('eyeBtn').className = 'btn-eye';
     document.getElementById('eyeBtn').textContent = '👁 激活视界';
     renderAll();
+    STATE.player.hp = 100;
+STATE.player.maxHp = 100;
+updateHealthBar(); // 更新血条显示
     showFloatMessage('你降生于这片古老大地上。', 'system');
     closeTrade();
 }
@@ -1191,6 +1229,23 @@ function renderAll() {
     renderStats();
     renderTrait();
     renderJob(); // 添加这一行
+}
+function updateHealthBar() {
+    const hp = STATE.player.hp;
+    const maxHp = STATE.player.maxHp;
+    const percent = Math.max(0, Math.min(1, hp / maxHp));
+    const fill = document.getElementById('healthFill');
+    const text = document.getElementById('healthText');
+    if (fill) {
+        fill.style.width = (percent * 100) + '%';
+        // 颜色变化
+        if (percent > 0.6) fill.style.background = '#4caf50';
+        else if (percent > 0.3) fill.style.background = '#ffeb3b';
+        else fill.style.background = '#f44336';
+    }
+    if (text) {
+        text.textContent = `${Math.floor(hp)}/${maxHp}`;
+    }
 }
 function renderStats() {
     const p = document.getElementById('statsPanel');
@@ -1556,21 +1611,46 @@ playAchievement(
 // ============================================================
 function enterDungeon() {
     if (inDungeon) return;
-    // 保存主世界位置
     savedWorldPos = { x: STATE.pos.x, y: STATE.pos.y };
     inDungeon = true;
-    // 玩家放到房间入口（左上角偏内）
-    STATE.pos.x = 60;
-    STATE.pos.y = 60;
-    // 生成 Boss
-    dungeonBoss = {
-        x: DUNGEON.width / 2,
-        y: DUNGEON.height / 2 - 20,
-        w: 64, h: 64,
-        hp: 100,
-        maxHp: 100,
-    };
-    showFloatMessage('⚔️ 进入仓库！击败暗影守卫！', 'milestone');
+   STATE.pos.x = DUNGEON.width / 2;
+STATE.pos.y = DUNGEON.height / 2;
+
+    if (bossDefeated) {
+        // ---- Boss 已被击败，创建尸体 ----
+        dungeonBoss = {
+            x: DUNGEON.width / 2,
+            y: DUNGEON.height / 2 - 20,
+            w: 64, h: 64,
+            hp: 0,
+            maxHp: 100,
+            state: 'dead',
+            deathTimer: 40,      // 直接设为最后一帧
+            facingDir: 'down',
+            isAttacking: false,
+            attackTimer: 0,
+            attackCooldown: 0,
+            _rewardGiven: true   // 防止重复奖励
+        };
+        showFloatMessage('🗝️ 仓库中的暗影守卫已经倒下...', 'system');
+    } else {
+        // ---- 创建活的 Boss ----
+        dungeonBoss = {
+            x: DUNGEON.width / 2,
+            y: DUNGEON.height / 2 - 20,
+            w: 64, h: 64,
+            hp: 100,
+            maxHp: 100,
+            attackCooldown: 0,
+            isAttacking: false,
+            attackTimer: 0,
+            facingDir: 'down',
+            state: 'alive',
+            deathTimer: 0,
+            _rewardGiven: false
+        };
+        showFloatMessage('⚔️ 进入仓库！击败暗影守卫！', 'milestone');
+    }
 }
 
 function exitDungeon() {
@@ -1912,6 +1992,34 @@ function updateMonsters() {
             const moveX = (dx/dist) * mon.speed;
             const moveY = (dy/dist) * mon.speed;
             mon.x += moveX; mon.y += moveY;
+       // 怪物攻击玩家
+const dx2 = player.x - mon.x;
+const dy2 = player.y - mon.y;
+const dist2 = Math.sqrt(dx2*dx2 + dy2*dy2);
+if (dist2 < 30 && mon.attackCooldown === 0) {
+    const damage = 5 + Math.floor(Math.random() * 6);
+    STATE.player.hp -= damage;
+    showFloatMessage(`💢 受到 ${damage} 点伤害！`, 'fail');
+    mon.attackCooldown = 60;
+    mon.isAttacking = true;   // 开始攻击动画
+    
+    mon.attackTimer = 0;      // 重置计时
+    updateHealthBar();
+    if (STATE.player.hp <= 0) {
+        triggerPlayerDeath();
+    }
+}
+if (mon.attackCooldown > 0) mon.attackCooldown--;
+// ========== 新增：攻击动画计时 ==========
+    if (mon.isAttacking) {
+        mon.attackTimer++;
+        if (mon.attackTimer >= 30) {
+            mon.isAttacking = false;
+            mon.attackTimer = 0;
+        }
+        continue; // 跳过后面的移动和帧更新
+    }
+    // =====================================
             mon.x = Math.max(20, Math.min(WORLD_W-20, mon.x));
             mon.y = Math.max(20, Math.min(WORLD_H-20, mon.y));
             mon.state = 'walk';
@@ -1931,24 +2039,72 @@ function updateMonsters() {
 
 function attackMonsters() {
     const player = STATE.pos, range = 80;
+
+    // ---- 攻击小怪 ----
     for (const mon of monsters) {
         if (!mon.alive) continue;
         const dx = mon.x - player.x, dy = mon.y - player.y;
-        if (Math.sqrt(dx*dx + dy*dy) < range) {
+        if (Math.sqrt(dx * dx + dy * dy) < range) {
             mon.state = 'knockdown';
             mon.frameTimer = 0;
             showFloatMessage('💀 消灭了一只骷髅！', 'success');
             if (Math.random() < 0.2) {
-                const keys = ['筋骨','智谋','体魄'];
-                const key = keys[Math.floor(Math.random()*keys.length)];
+                const keys = ['筋骨', '智谋', '体魄'];
+                const key = keys[Math.floor(Math.random() * keys.length)];
                 STATE.player.stats[key] += 1;
                 showFloatMessage(`✨ ${key} +1！`, 'milestone');
                 renderStats();
             }
         }
     }
-}
 
+    // ---- 攻击Boss（副本内） ----
+    if (inDungeon && dungeonBoss) {
+        // 如果 Boss 已经死亡或正在死亡，不处理攻击
+        if (dungeonBoss.state === 'dying' || dungeonBoss.state === 'dead') return;
+
+        const boss = dungeonBoss;
+        const dx = boss.x - player.x;
+        const dy = boss.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 80) {
+            const damage = 10 + Math.floor(Math.random() * 11);
+            boss.hp -= damage;
+            showFloatMessage(`⚔️ Boss 受到 ${damage} 点伤害！`, 'system');
+            if (boss.hp <= 0) {
+                boss.hp = 0;
+                boss.state = 'dying';
+                boss.deathTimer = 0;
+                showFloatMessage('🏆 Boss 被击败！', 'milestone');
+                // 不再立即退出，等死亡动画播完
+                // 奖励将在 gameLoop 中发放
+            }
+        }
+    }
+}
+function triggerPlayerDeath() {
+     if (STATE.isKnockdown) return; // 防止重复触发
+    STATE.isKnockdown = true;
+    STATE.deathFrame = 0;      // 从第一帧开始
+    STATE.deathTimer = 0;      // 帧计时器
+    STATE.animState = 'knockdown';
+    showFloatMessage('💀 你倒下了...', 'fail');
+
+    setTimeout(() => {
+        STATE.isKnockdown = false;
+        STATE.deathFrame = -1;
+        STATE.deathTimer = 0;
+        STATE.player.hp = STATE.player.maxHp;
+        STATE.animState = 'idle';
+        STATE.frameIndex = 0;
+        STATE.frameTimer = 0;
+        updateHealthBar();
+        if (inDungeon) exitDungeon();
+        STATE.pos.x = WORLD_W / 2;
+        STATE.pos.y = WORLD_H / 2;
+        showFloatMessage('✨ 在出生点醒来...', 'system');
+    }, 1500);
+}
 function updateCamera() {
     camera.x = STATE.pos.x - canvasW/2;
     camera.y = STATE.pos.y - canvasH/2;
@@ -2177,54 +2333,307 @@ if (dist < 70) {
     }
 
     // 怪物
-    for (const mon of monsters) {
-        if (!mon.alive) continue;
-        const sp = worldToScreen(mon.x, mon.y);
-        if (sp.x < -50 || sp.x > W+50 || sp.y < -50 || sp.y > H+50) continue;
-        let row=0, anim=[0];
-        if (mon.state === 'knockdown') {
-            row = 9; anim = [0,1,2,3,4,5];
-            mon.frameTimer++;
-            if (mon.frameTimer > 30) mon.alive = false;
-        } else {
-            const dir = mon.facingDir;
-            if (dir === 'down') row = 0;
-            else if (dir === 'right' || dir === 'left') row = 1;
-            else if (dir === 'up') row = 2;
-            else row = 0;
-            anim = [0,1,2,3,4,5];
-        }
-        const col = mon.frameIndex % 6;
-        const sx = col * 32, sy = row * 32;
+for (const mon of monsters) {
+    if (!mon.alive) continue;
+    const sp = worldToScreen(mon.x, mon.y);
+    if (sp.x < -50 || sp.x > W+50 || sp.y < -50 || sp.y > H+50) continue;
+
+    // ----- 倒地动画（第 7 行，4 列） -----
+    if (mon.state === 'knockdown') {
+        const row = 6;
+        const colIndex = Math.floor(mon.frameTimer / 10) % 4;
+        mon.frameTimer++;
+        const sx = colIndex * 32;
+        const sy = row * 32;
         if (IMG.skeleton && IMG.skeleton.complete && IMG.skeleton.naturalWidth > 0) {
             ctx.save();
             ctx.translate(sp.x, sp.y);
-            if (mon.facingDir === 'left') ctx.scale(-1, 1);
             ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
-            
             ctx.restore();
         } else {
             ctx.fillStyle = '#888';
             ctx.fillRect(sp.x - 16, sp.y - 32, 32, 32);
         }
+        if (mon.frameTimer > 40) mon.alive = false;
+        continue; // 跳过后续绘制
     }
 
-    // 主角
+    // ----- 攻击动画（第 8/9/10 行，4 列） -----
+    if (mon.isAttacking) {
+        let row = 7; // 默认向下
+        const dir = mon.facingDir;
+        if (dir === 'down') row = 7;
+        else if (dir === 'right' || dir === 'left') row = 8;
+        else if (dir === 'up') row = 9;
+        // 每 8 帧切换一列，共 4 列
+        const colIndex = Math.floor(mon.attackTimer / 8) % 4;
+        const sx = colIndex * 32;
+        const sy = row * 32;
+        if (IMG.skeleton && IMG.skeleton.complete && IMG.skeleton.naturalWidth > 0) {
+            ctx.save();
+            ctx.translate(sp.x, sp.y);
+            if (mon.facingDir === 'left') ctx.scale(-1, 1);
+            ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
+            ctx.restore();
+        } else {
+            ctx.fillStyle = '#c44';
+            ctx.fillRect(sp.x - 16, sp.y - 32, 32, 32);
+        }
+        continue; // 跳过后面的 idle/walk 绘制
+    }
+
+    // ----- 正常 idle / walk 动画（第 0/1/2 行） -----
+    let row = 0;
+    const dir = mon.facingDir;
+    if (dir === 'down') row = 0;
+    else if (dir === 'right' || dir === 'left') row = 1;
+    else if (dir === 'up') row = 2;
+    else row = 0;
+    const col = mon.frameIndex % 6;
+    const sx = col * 32;
+    const sy = row * 32;
+    if (IMG.skeleton && IMG.skeleton.complete && IMG.skeleton.naturalWidth > 0) {
+        ctx.save();
+        ctx.translate(sp.x, sp.y);
+        if (mon.facingDir === 'left') ctx.scale(-1, 1);
+        ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
+        ctx.restore();
+    } else {
+        ctx.fillStyle = '#888';
+        ctx.fillRect(sp.x - 16, sp.y - 32, 32, 32);
+    }
+    // 帧更新（正常移动）
+    mon.frameTimer++;
+    if (mon.frameTimer >= mon.frameDelay) {
+        mon.frameTimer = 0;
+        mon.frameIndex = (mon.frameIndex + 1) % 6;
+    }
+}
+   // ---- 主角绘制 ----
+const px = STATE.pos.x, py = STATE.pos.y;
+const sp = worldToScreen(px, py);
+updateAnimation(); // 更新动画状态
+
+let row = 0, col = 0, cfg = SPRITE;
+
+if (STATE.isKnockdown) {
+    // 使用倒地行和 deathFrame 作为列
+    row = cfg.rows.knockdown;
+    col = STATE.deathFrame;
+    // 限制列范围
+    if (col < 0) col = 0;
+    if (col >= cfg.anim.knockdown.length) col = cfg.anim.knockdown.length - 1;
+} else if (STATE.isAttacking) {
+    const dir = STATE.facingDir;
+    if (dir === 'down') row = cfg.rows.attack_down;
+    else if (dir === 'right' || dir === 'left') row = cfg.rows.attack_right;
+    else if (dir === 'up') row = cfg.rows.attack_up;
+    else row = cfg.rows.attack_down;
+    // 攻击动画按帧播放
+    STATE.frameTimer++;
+    if (STATE.frameTimer >= STATE.frameDelay) {
+        STATE.frameTimer = 0;
+        STATE.frameIndex = (STATE.frameIndex + 1) % cfg.anim.attack_down.length;
+    }
+    col = STATE.frameIndex;
+} else {
+    // 普通移动/待机
+    const sk = STATE.animState;
+    const map = {
+        'idle': cfg.rows.walk_down,
+        'walk_down': cfg.rows.walk_down,
+        'walk_right': cfg.rows.walk_right,
+        'walk_left': cfg.rows.walk_right,
+        'walk_up': cfg.rows.walk_up,
+        'run_down': cfg.rows.run_down,
+        'run_right': cfg.rows.run_right,
+        'run_left': cfg.rows.run_right,
+        'run_up': cfg.rows.run_up
+    };
+    row = map[sk] || cfg.rows.walk_down;
+    let anim = cfg.anim.idle;
+    if (sk.startsWith('run')) anim = cfg.anim.run_down;
+    else if (sk.startsWith('walk')) anim = cfg.anim.walk_down;
+    else anim = cfg.anim.idle;
+    STATE.frameTimer++;
+    if (STATE.frameTimer >= STATE.frameDelay) {
+        STATE.frameTimer = 0;
+        STATE.frameIndex = (STATE.frameIndex + 1) % anim.length;
+    }
+    col = STATE.frameIndex % cfg.cols;
+}
+
+const sx = col * cfg.frameWidth;
+const sy = row * cfg.frameHeight;
+
+if (IMG.player && IMG.player.complete && IMG.player.naturalWidth > 0) {
+    ctx.save();
+    ctx.translate(sp.x, sp.y);
+    if (STATE.facingDir === 'left') ctx.scale(-1, 1);
+    ctx.drawImage(IMG.player, sx, sy, 32, 32, -32, -48, 64, 64);
+    ctx.restore();
+} else {
+    ctx.fillStyle = '#6a9ac0';
+    ctx.fillRect(sp.x - 16, sp.y - 32, 32, 32);
+}
+
+    ctx.restore();
+}
+// ============================================================
+// 副本房间绘制
+// ============================================================
+function drawDungeon() {
+    const W = canvasW, H = canvasH;
+    ctx.save();
+
+    // ---- 计算房间居中偏移 ----
+    const offsetX = (W - DUNGEON.width) / 2;
+    const offsetY = (H - DUNGEON.height) / 2;
+
+    // 1. 背景（填充整个画布）
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. 地板（网格）加偏移
+    ctx.strokeStyle = '#3a3a3a';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= DUNGEON.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + x, offsetY);
+        ctx.lineTo(offsetX + x, offsetY + DUNGEON.height);
+        ctx.stroke();
+    }
+    for (let y = 0; y <= DUNGEON.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + y);
+        ctx.lineTo(offsetX + DUNGEON.width, offsetY + y);
+        ctx.stroke();
+    }
+
+    // 3. 墙壁（边框）加偏移
+    ctx.strokeStyle = '#6a5a4a';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(offsetX, offsetY, DUNGEON.width, DUNGEON.height);
+
+    // 4. 四角柱子加偏移
+    ctx.fillStyle = '#5a4a3a';
+    const pillar = 24;
+    ctx.fillRect(offsetX + 10, offsetY + 10, pillar, pillar);
+    ctx.fillRect(offsetX + DUNGEON.width - 10 - pillar, offsetY + 10, pillar, pillar);
+    ctx.fillRect(offsetX + 10, offsetY + DUNGEON.height - 10 - pillar, pillar, pillar);
+    ctx.fillRect(offsetX + DUNGEON.width - 10 - pillar, offsetY + DUNGEON.height - 10 - pillar, pillar, pillar);
+
+    // 5. 出口传送阵（右下角）加偏移
+    const ex = DUNGEON.exitX, ey = DUNGEON.exitY;
+    ctx.fillStyle = 'rgba(0, 200, 255, 0.2)';
+    ctx.beginPath();
+    ctx.arc(offsetX + ex + 20, offsetY + ey + 20, 35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#aaf';
+    ctx.font = '18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⬆ 出口', offsetX + ex + 20, offsetY + ey - 10);
+
+    // ---- 检测玩家是否在出口附近 ----
+    const dxExit = STATE.pos.x - (ex + 20);
+    const dyExit = STATE.pos.y - (ey + 20);
+    const distExit = Math.sqrt(dxExit * dxExit + dyExit * dyExit);
+    if (distExit < 50) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(offsetX + ex - 10, offsetY + ey + 30, 60, 24);
+        ctx.fillStyle = '#aaf';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('按 F 退出', offsetX + ex + 20, offsetY + ey + 48);
+    }
+
+    // 6. Boss（加偏移）
+    if (dungeonBoss) {
+        const b = dungeonBoss;
+        const bx = b.x, by = b.y;
+
+        let row = 0, col = 0;
+
+        if (b.state === 'dying' || b.state === 'dead') {
+            row = 6;
+            if (b.state === 'dying') {
+                const colIndex = Math.floor(b.deathTimer / 8) % 4;
+                col = Math.min(colIndex, 3);
+            } else {
+                col = 3;
+            }
+        } else if (b.isAttacking) {
+            const dir = b.facingDir;
+            if (dir === 'down') row = 7;
+            else if (dir === 'right' || dir === 'left') row = 8;
+            else if (dir === 'up') row = 9;
+            else row = 7;
+            const colIndex = Math.floor(b.attackTimer / 8) % 4;
+            col = colIndex;
+        } else {
+            row = 0;
+            col = 0;
+        }
+
+        const sx = col * 32;
+        const sy = row * 32;
+
+        if (IMG.skeleton && IMG.skeleton.complete && IMG.skeleton.naturalWidth > 0) {
+            ctx.save();
+            ctx.translate(offsetX + bx, offsetY + by);
+            if (b.facingDir === 'left') ctx.scale(-1, 1);
+            ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
+            ctx.restore();
+        } else {
+            ctx.fillStyle = '#c44';
+            ctx.fillRect(offsetX + bx - 20, offsetY + by - 30, 40, 60);
+        }
+
+        // 血条（仅在 alive 或 dying 时显示）
+        if (b.state === 'alive' || b.state === 'dying') {
+            const hpPercent = b.hp / b.maxHp;
+            ctx.fillStyle = '#222';
+            ctx.fillRect(offsetX + bx - 40, offsetY + by - 60, 80, 10);
+            ctx.fillStyle = hpPercent > 0.5 ? '#0f0' : (hpPercent > 0.2 ? '#ff0' : '#f00');
+            ctx.fillRect(offsetX + bx - 40, offsetY + by - 60, 80 * hpPercent, 10);
+            ctx.strokeStyle = '#888';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(offsetX + bx - 40, offsetY + by - 60, 80, 10);
+            ctx.fillStyle = '#ff8844';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚔ 暗影守卫', offsetX + bx, offsetY + by - 72);
+        }
+    }
+
+    // 7. 玩家（副本内绘制）
     const px = STATE.pos.x, py = STATE.pos.y;
-    const sp = worldToScreen(px, py);
     updateAnimation();
 
-    let row=0, anim=[0], cfg=SPRITE;
+    let row = 0, col = 0, cfg = SPRITE;
+
     if (STATE.isKnockdown) {
         row = cfg.rows.knockdown;
-        anim = cfg.anim.knockdown;
+        col = STATE.deathFrame;
+        if (col < 0) col = 0;
+        if (col >= cfg.anim.knockdown.length) col = cfg.anim.knockdown.length - 1;
     } else if (STATE.isAttacking) {
         const dir = STATE.facingDir;
         if (dir === 'down') row = cfg.rows.attack_down;
         else if (dir === 'right' || dir === 'left') row = cfg.rows.attack_right;
         else if (dir === 'up') row = cfg.rows.attack_up;
         else row = cfg.rows.attack_down;
-        anim = cfg.anim.attack_down;
+        STATE.frameTimer++;
+        if (STATE.frameTimer >= STATE.frameDelay) {
+            STATE.frameTimer = 0;
+            STATE.frameIndex = (STATE.frameIndex + 1) % cfg.anim.attack_down.length;
+        }
+        col = STATE.frameIndex;
     } else {
         const sk = STATE.animState;
         const map = {
@@ -2239,125 +2648,30 @@ if (dist < 70) {
             'run_up': cfg.rows.run_up
         };
         row = map[sk] || cfg.rows.walk_down;
+        let anim = cfg.anim.idle;
         if (sk.startsWith('run')) anim = cfg.anim.run_down;
         else if (sk.startsWith('walk')) anim = cfg.anim.walk_down;
         else anim = cfg.anim.idle;
+        STATE.frameTimer++;
+        if (STATE.frameTimer >= STATE.frameDelay) {
+            STATE.frameTimer = 0;
+            STATE.frameIndex = (STATE.frameIndex + 1) % anim.length;
+        }
+        col = STATE.frameIndex % cfg.cols;
     }
 
-    STATE.frameTimer++;
-    const delay = (STATE.animState === 'idle' || STATE.isKnockdown) ? 12 : STATE.frameDelay;
-    if (STATE.frameTimer >= delay) {
-        STATE.frameTimer = 0;
-        STATE.frameIndex = (STATE.frameIndex + 1) % anim.length;
-    }
-    const idx = STATE.frameIndex % anim.length;    // 先限制索引范围
-const col = anim[idx] % cfg.cols;
-    const sx = col * cfg.frameWidth, sy = row * cfg.frameHeight;
+    const sx = col * cfg.frameWidth;
+    const sy = row * cfg.frameHeight;
 
     if (IMG.player && IMG.player.complete && IMG.player.naturalWidth > 0) {
         ctx.save();
-        ctx.translate(sp.x, sp.y);
+        ctx.translate(offsetX + px, offsetY + py);
         if (STATE.facingDir === 'left') ctx.scale(-1, 1);
-        ctx.drawImage(IMG.player, sx, sy, 32, 32, -32, -48, 64, 64);
+        ctx.drawImage(IMG.player, sx, sy, 32, 32, -16, -32, 32, 32);
         ctx.restore();
     } else {
-        ctx.fillStyle = '#6a9ac0';
-        ctx.fillRect(sp.x - 16, sp.y - 32, 32, 32);
-    }
-
-    ctx.restore();
-}
-// ============================================================
-// 副本房间绘制
-// ============================================================
-function drawDungeon() {
-    const W = canvasW, H = canvasH;
-    ctx.save();
-
-    // 1. 背景
-    ctx.fillStyle = '#2a2a2a';
-    ctx.fillRect(0, 0, W, H);
-
-    // 2. 地板（网格）
-    ctx.strokeStyle = '#3a3a3a';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < DUNGEON.width; x += 40) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-    }
-    for (let y = 0; y < DUNGEON.height; y += 40) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(W, y);
-        ctx.stroke();
-    }
-
-    // 3. 墙壁（边框）
-    ctx.strokeStyle = '#6a5a4a';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(0, 0, DUNGEON.width, DUNGEON.height);
-
-    // 4. 四角柱子
-    ctx.fillStyle = '#5a4a3a';
-    const pillar = 24;
-    ctx.fillRect(10, 10, pillar, pillar);
-    ctx.fillRect(DUNGEON.width - 10 - pillar, 10, pillar, pillar);
-    ctx.fillRect(10, DUNGEON.height - 10 - pillar, pillar, pillar);
-    ctx.fillRect(DUNGEON.width - 10 - pillar, DUNGEON.height - 10 - pillar, pillar, pillar);
-
-    // 5. 出口传送阵（右下角）
-    const ex = DUNGEON.exitX, ey = DUNGEON.exitY;
-    // 光圈
-    ctx.fillStyle = 'rgba(0, 200, 255, 0.2)';
-    ctx.beginPath();
-    ctx.arc(ex + 20, ey + 20, 35, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#aaf';
-    ctx.font = '18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('⬆ 出口', ex + 20, ey - 10);
-
-    // 6. Boss
-    if (dungeonBoss) {
-        const b = dungeonBoss;
-        const bx = b.x, by = b.y;
-        // 使用骷髅精灵
-        if (IMG.skeleton && IMG.skeleton.complete) {
-            ctx.drawImage(IMG.skeleton, 0, 0, 32, 32, bx - 32, by - 48, 64, 64);
-        } else {
-            ctx.fillStyle = '#c44';
-            ctx.fillRect(bx - 20, by - 30, 40, 60);
-        }
-        // Boss 血条
-        const hpPercent = b.hp / b.maxHp;
-        ctx.fillStyle = '#222';
-        ctx.fillRect(bx - 40, by - 60, 80, 10);
-        ctx.fillStyle = hpPercent > 0.5 ? '#0f0' : (hpPercent > 0.2 ? '#ff0' : '#f00');
-        ctx.fillRect(bx - 40, by - 60, 80 * hpPercent, 10);
-        ctx.strokeStyle = '#888';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx - 40, by - 60, 80, 10);
-        // Boss 名称
-        ctx.fillStyle = '#ff8844';
-        ctx.font = '14px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('⚔ 暗影守卫', bx, by - 72);
-    }
-
-    // 7. 玩家（在副本中始终绘制在房间内）
-    const px = STATE.pos.x, py = STATE.pos.y;
-    if (IMG.player && IMG.player.complete) {
-        ctx.drawImage(IMG.player, 0, 0, 32, 32, px - 16, py - 32, 32, 32);
-    } else {
         ctx.fillStyle = '#6af';
-        ctx.fillRect(px - 12, py - 24, 24, 24);
+        ctx.fillRect(offsetX + px - 12, offsetY + py - 24, 24, 24);
     }
 
     ctx.restore();
@@ -2365,22 +2679,25 @@ function drawDungeon() {
 function updateAnimation() {
     // ---- 倒地状态 ----
     if (STATE.isKnockdown) {
-        if (STATE.animState !== 'knockdown') {
-            STATE.animState = 'knockdown';
-            STATE.frameIndex = 0;
-            STATE.frameTimer = 0;
-        }
-        STATE.knockdownTimer++;
-        if (STATE.knockdownTimer > 60) {
-            STATE.isKnockdown = false;
-            STATE.knockdownTimer = 0;
-            STATE.animState = 'idle';
-            STATE.frameIndex = 0;
-            STATE.frameTimer = 0;
-            showFloatMessage('💪 恢复了', 'system');
-        }
-        return;
+    // 初始化动画状态
+    if (STATE.animState !== 'knockdown') {
+        STATE.animState = 'knockdown';
+        STATE.deathFrame = 0;
+        STATE.deathTimer = 0;
     }
+    // 如果还没播到最后一帧，则推进
+    const total = SPRITE.anim.knockdown.length; // 假设是4
+    if (STATE.deathFrame < total - 1) {
+        STATE.deathTimer++;
+        if (STATE.deathTimer >= 8) {   // 每8帧切换一帧
+            STATE.deathTimer = 0;
+            STATE.deathFrame++;
+        }
+    }
+    // 如果已经播完，保持最后一帧（不做额外操作）
+    return;  // 阻止后续移动/攻击逻辑
+    if (STATE.isKnockdown) return;
+}
 
     // ---- 攻击状态 ----
     if (STATE.isAttacking) {
@@ -2430,7 +2747,6 @@ function updateAnimation() {
 
     const newState = running ? `run_${dir}` : `walk_${dir}`;
 
-    // 状态变化时重置帧
     if (STATE.animState !== newState) {
         STATE.animState = newState;
         STATE.frameIndex = 0;
@@ -2441,7 +2757,9 @@ function updateAnimation() {
 }
 
 function updatePlayer() {
+    if (STATE.isKnockdown) return;
     if (STATE.gamePaused) return;
+    if (STATE.isKnockdown) return;
     let dx=0, dy=0;
     if (STATE.keys.w) dy = -1;
     if (STATE.keys.s) dy = 1;
@@ -2494,33 +2812,78 @@ function gameLoop() {
     if (!STATE.gamePaused) {
         if (STATE.monsterSpawnTimer <= 0) {
             spawnMonster();
-            STATE.monsterSpawnTimer = 900 + Math.random()*600;
+            STATE.monsterSpawnTimer = 900 + Math.random() * 600;
         } else {
             STATE.monsterSpawnTimer--;
         }
         updateMonsters();
         if (STATE.attackCooldown > 0) STATE.attackCooldown--;
-            // ---- Boss AI（副本内） ----
-    if (inDungeon && dungeonBoss && dungeonBoss.hp > 0) {
-        const boss = dungeonBoss;
-        const dx = STATE.pos.x - boss.x;
-        const dy = STATE.pos.y - boss.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist > 40 && dist < 200) {
-            boss.x += (dx/dist) * 0.5;
-            boss.y += (dy/dist) * 0.5;
+
+        // ---- Boss AI（副本内） ----
+        if (inDungeon && dungeonBoss && dungeonBoss.hp > 0) {
+            const boss = dungeonBoss;
+            const dx = STATE.pos.x - boss.x;
+            const dy = STATE.pos.y - boss.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            // Boss 向玩家移动
+            if (dist > 40 && dist < 200) {
+                boss.x += (dx / dist) * 0.5;
+                boss.y += (dy / dist) * 0.5;
+            }
+            // Boss 攻击
+            if (dist < 60 && (boss.attackCooldown === undefined || boss.attackCooldown <= 0)) {
+                const damage = 10 + Math.floor(Math.random() * 11);
+                STATE.player.hp -= damage;
+                showFloatMessage(`💢 Boss 造成 ${damage} 点伤害！`, 'fail');
+                boss.attackCooldown = 120 + Math.floor(Math.random() * 30);
+                boss.isAttacking = true;
+                boss.attackTimer = 0;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    boss.facingDir = dx > 0 ? 'right' : 'left';
+                } else {
+                    boss.facingDir = dy > 0 ? 'down' : 'up';
+                }
+                updateHealthBar();
+                if (STATE.player.hp <= 0) {
+                    triggerPlayerDeath();
+                }
+            }
+            if (boss.attackCooldown !== undefined && boss.attackCooldown > 0) {
+                boss.attackCooldown--;
+            }
         }
-        if (dist < 50 && boss.attackCooldown === undefined) {
-            boss.attackCooldown = 30;
-            showFloatMessage('💥 Boss 攻击！', 'fail');
+
+        // ---- Boss 死亡动画 & 攻击动画计时（独立于 hp > 0） ----
+        // ---- Boss 死亡动画 ----
+if (inDungeon && dungeonBoss) {
+    if (dungeonBoss.state === 'dying') {
+        dungeonBoss.deathTimer++;
+        if (dungeonBoss.deathTimer >= 40) {
+            dungeonBoss.state = 'dead';
+            bossDefeated = true; // 标记为已击败
+            if (!dungeonBoss._rewardGiven) {
+                dungeonBoss._rewardGiven = true;
+                STATE.player.stats.智谋 += 5;
+                renderStats();
+                showFloatMessage('✨ 你获得了 Boss 的宝藏，智谋 +5！', 'milestone');
+                showFloatMessage('🗝️ 前往魔法阵处按 F 退出', 'system');
+            }
+                    // 不再自动退出
+                }
+            }
+            // 攻击动画计时
+            if (dungeonBoss.isAttacking) {
+                dungeonBoss.attackTimer++;
+                if (dungeonBoss.attackTimer >= 30) {
+                    dungeonBoss.isAttacking = false;
+                    dungeonBoss.attackTimer = 0;
+                }
+            }
         }
-        if (boss.attackCooldown !== undefined && boss.attackCooldown > 0) {
-            boss.attackCooldown--;
-        }
-    }
+
         updatePlayer();
     }
-    drawScene(); // 无条件绘制，保证画面不黑
+    drawScene();
     animationId = requestAnimationFrame(gameLoop);
 }
 
@@ -2528,25 +2891,51 @@ function gameLoop() {
 // 鼠标左键攻击
 // ============================================================
 function initMouseAttack() {
-    canvas.addEventListener('click', function(e) {
+    // 移除旧监听（避免重复绑定）
+    canvas.removeEventListener('click', initMouseAttack._handler);
+    // 定义新处理函数
+    const handler = function(e) {
         if (STATE.gamePaused) return;
 
-        // 计算点击的世界坐标
+        // 计算画布上的像素坐标
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         const mx = (e.clientX - rect.left) * scaleX;
         const my = (e.clientY - rect.top) * scaleY;
+
+        // ---- 副本内 ----
+        if (inDungeon) {
+            if (STATE.isAttacking || STATE.isKnockdown) return;
+            STATE.isAttacking = true;
+            STATE.attackTimer = 0;
+            // 副本内直接使用像素坐标（因为 drawDungeon 从 (0,0) 绘制，无 camera 偏移）
+            const dx = mx - STATE.pos.x;
+            const dy = my - STATE.pos.y;
+            const angle = Math.atan2(dy, dx);
+            if (Math.abs(angle) < Math.PI / 4) {
+                STATE.facingDir = 'right';
+            } else if (Math.abs(angle) > 3 * Math.PI / 4) {
+                STATE.facingDir = 'left';
+            } else if (angle > 0) {
+                STATE.facingDir = 'down';
+            } else {
+                STATE.facingDir = 'up';
+            }
+            attackMonsters();
+            STATE.attackCooldown = 15;
+            return;
+        }
+
+        // ---- 主世界 ----
         const wx = mx + camera.x;
         const wy = my + camera.y;
 
-        // 先检测是否点击了建筑
+        // 检测是否点击了建筑
         let buildingClicked = false;
         for (const b of BUILDINGS) {
-            // 判断点是否在建筑矩形内
             if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
                 buildingClicked = true;
-                // 执行与F键相同的交互逻辑
                 if (b.type === 'blacksmith') {
                     openDialog();
                 } else {
@@ -2556,19 +2945,29 @@ function initMouseAttack() {
             }
         }
 
-        // 如果没有点击建筑，则执行攻击
         if (!buildingClicked) {
             if (STATE.isAttacking || STATE.isKnockdown) return;
             STATE.isAttacking = true;
             STATE.attackTimer = 0;
             const dx = wx - STATE.pos.x;
             const dy = wy - STATE.pos.y;
-            if (Math.abs(dx) > Math.abs(dy)) STATE.facingDir = dx > 0 ? 'right' : 'left';
-            else STATE.facingDir = dy > 0 ? 'down' : 'up';
+            const angle = Math.atan2(dy, dx);
+            if (Math.abs(angle) < Math.PI / 4) {
+                STATE.facingDir = 'right';
+            } else if (Math.abs(angle) > 3 * Math.PI / 4) {
+                STATE.facingDir = 'left';
+            } else if (angle > 0) {
+                STATE.facingDir = 'down';
+            } else {
+                STATE.facingDir = 'up';
+            }
             attackMonsters();
             STATE.attackCooldown = 15;
         }
-    });
+    };
+    // 保存引用以便移除
+    initMouseAttack._handler = handler;
+    canvas.addEventListener('click', handler);
 }
 
 // ============================================================
