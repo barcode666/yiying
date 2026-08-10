@@ -2097,7 +2097,8 @@ function updateMonsters() {
         }
         const dx = player.x - mon.x, dy = player.y - mon.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < 300 && dist > 20) {
+        const HATE_RANGE = 400; // 怪物仇恨范围
+if (dist < HATE_RANGE && dist > 20) {
             const moveX = (dx/dist) * mon.speed;
             const moveY = (dy/dist) * mon.speed;
             mon.x += moveX; mon.y += moveY;
@@ -2662,63 +2663,68 @@ function drawDungeon() {
     }
 
     // 6. Boss（加偏移）
-    if (dungeonBoss) {
-        const b = dungeonBoss;
-        const bx = b.x, by = b.y;
+if (dungeonBoss) {
+    const b = dungeonBoss;
+    const bx = b.x, by = b.y;
 
-        let row = 0, col = 0;
+    let row = 0, col = 0;
 
-        if (b.state === 'dying' || b.state === 'dead') {
-            row = 6;
-            if (b.state === 'dying') {
-                const colIndex = Math.floor(b.deathTimer / 8) % 4;
-                col = Math.min(colIndex, 3);
-            } else {
-                col = 3;
-            }
-        } else if (b.isAttacking) {
-            const dir = b.facingDir;
-            if (dir === 'down') row = 7;
-            else if (dir === 'right' || dir === 'left') row = 8;
-            else if (dir === 'up') row = 9;
-            else row = 7;
-            const colIndex = Math.floor(b.attackTimer / 8) % 4;
-            col = colIndex;
+    if (b.state === 'dying' || b.state === 'dead') {
+        row = 6;
+        if (b.state === 'dying') {
+            const colIndex = Math.floor(b.deathTimer / 8) % 4;
+            col = Math.min(colIndex, 3);
         } else {
-            row = 0;
-            col = 0;
+            col = 3;
         }
-
-        const sx = col * 32;
-        const sy = row * 32;
-
-        if (IMG.skeleton && IMG.skeleton.complete && IMG.skeleton.naturalWidth > 0) {
-            ctx.save();
-            ctx.translate(offsetX + bx, offsetY + by);
-            if (b.facingDir === 'left') ctx.scale(-1, 1);
-            ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
-            ctx.restore();
-        } else {
-            ctx.fillStyle = '#c44';
-            ctx.fillRect(offsetX + bx - 20, offsetY + by - 30, 40, 60);
-        }
-
-        // 血条（仅在 alive 或 dying 时显示）
-        if (b.state === 'alive' || b.state === 'dying') {
-            const hpPercent = b.hp / b.maxHp;
-            ctx.fillStyle = '#222';
-            ctx.fillRect(offsetX + bx - 40, offsetY + by - 60, 80, 10);
-            ctx.fillStyle = hpPercent > 0.5 ? '#0f0' : (hpPercent > 0.2 ? '#ff0' : '#f00');
-            ctx.fillRect(offsetX + bx - 40, offsetY + by - 60, 80 * hpPercent, 10);
-            ctx.strokeStyle = '#888';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(offsetX + bx - 40, offsetY + by - 60, 80, 10);
-            ctx.fillStyle = '#ff8844';
-            ctx.font = '14px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('⚔ 暗影守卫', offsetX + bx, offsetY + by - 72);
-        }
+    } else if (b.isAttacking) {
+        const dir = b.facingDir;
+        if (dir === 'down') row = 7;
+        else if (dir === 'right' || dir === 'left') row = 8;
+        else if (dir === 'up') row = 9;
+        else row = 7;
+        const colIndex = Math.floor(b.attackTimer / 8) % 4;
+        col = colIndex;
+    } else {
+        // 待机：根据朝向选择行（第 0/1/2 行），使用第 0 列
+        const dir = b.facingDir;
+        if (dir === 'down') row = 0;
+        else if (dir === 'right' || dir === 'left') row = 1;
+        else if (dir === 'up') row = 2;
+        else row = 0;
+        col = 0;
     }
+
+    const sx = col * 32;
+    const sy = row * 32;
+
+    if (IMG.skeleton && IMG.skeleton.complete && IMG.skeleton.naturalWidth > 0) {
+        ctx.save();
+        ctx.translate(offsetX + bx, offsetY + by);
+        if (b.facingDir === 'left') ctx.scale(-1, 1);
+        ctx.drawImage(IMG.skeleton, sx, sy, 32, 32, -32, -48, 64, 64);
+        ctx.restore();
+    } else {
+        ctx.fillStyle = '#c44';
+        ctx.fillRect(offsetX + bx - 20, offsetY + by - 30, 40, 60);
+    }
+
+    // 血条（仅在 alive 或 dying 时显示）
+    if (b.state === 'alive' || b.state === 'dying') {
+        const hpPercent = b.hp / b.maxHp;
+        ctx.fillStyle = '#222';
+        ctx.fillRect(offsetX + bx - 40, offsetY + by - 60, 80, 10);
+        ctx.fillStyle = hpPercent > 0.5 ? '#0f0' : (hpPercent > 0.2 ? '#ff0' : '#f00');
+        ctx.fillRect(offsetX + bx - 40, offsetY + by - 60, 80 * hpPercent, 10);
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(offsetX + bx - 40, offsetY + by - 60, 80, 10);
+        ctx.fillStyle = '#ff8844';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚔ 暗影守卫', offsetX + bx, offsetY + by - 72);
+    }
+}
 
     // 7. 玩家（副本内绘制）
     const px = STATE.pos.x, py = STATE.pos.y;
@@ -2935,10 +2941,18 @@ function gameLoop() {
             const dy = STATE.pos.y - boss.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             // Boss 向玩家移动
-            if (dist > 40 && dist < 200) {
-                boss.x += (dx / dist) * 0.5;
-                boss.y += (dy / dist) * 0.5;
-            }
+            // Boss 全图追踪，只要距离大于 40 就移动（防止重叠）
+if (dist > 40) {
+    boss.x += (dx / dist) * 0.5;
+    boss.y += (dy / dist) * 0.5;
+    // 更新 Boss 朝向（面向玩家）
+    if (Math.abs(dx) > Math.abs(dy)) {
+        boss.facingDir = dx > 0 ? 'right' : 'left';
+    } else {
+        boss.facingDir = dy > 0 ? 'down' : 'up';
+    }
+}
+
             // Boss 攻击
             if (dist < 60 && (boss.attackCooldown === undefined || boss.attackCooldown <= 0)) {
                 const damage = 10 + Math.floor(Math.random() * 11);
