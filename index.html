@@ -486,6 +486,8 @@ function generateTrees() {
     const obstacles = [];
     for (const b of BUILDINGS) {
         obstacles.push({ x: b.x + b.w / 2, y: b.y + b.h / 2, radius: minDistToBuilding });
+        // 添加篝火作为障碍物（防止树木覆盖）
+obstacles.push({ x: WORLD_W / 2, y: WORLD_H / 2, radius: 50 });
     }
 
     
@@ -1885,10 +1887,30 @@ function closeTrade() {
 // 关闭游戏
 // ============================================================
 document.getElementById('backBtn').addEventListener('click', function() {
-    if (confirm('确定要关闭游戏吗？')) {
-        if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
-        window.close();
-        setTimeout(() => { alert('如果浏览器没有关闭，请手动关闭此标签页。'); }, 500);
+    if (confirm('⚠️ 确定要删除所有存档数据吗？\n此操作不可恢复！')) {
+        // 清除 localStorage 存档
+        localStorage.removeItem('chronicle_save');
+        // 重置游戏状态
+        bossDefeated = false;
+        chronicleRecords = [];
+        STATE.player.hp = STATE.player.maxHp;
+        STATE.player.stats = { 筋骨: 0, 智谋: 0, 体魄: 0 };
+        STATE.job = '散人';
+        STATE.hasPaid = false;
+        STATE.player.traitLocked = true;
+        STATE.pos.x = WORLD_W / 2;
+        STATE.pos.y = WORLD_H / 2;
+        // 重置地形（重新生成）
+        trees = [];
+        extraObjects = [];
+        generateTrees();
+        generateExtraTerrain();
+        // 更新 UI
+        renderAll();
+        updateHealthBar();
+        document.getElementById('eyeBtn').className = 'btn-eye';
+        document.getElementById('eyeBtn').textContent = '👁 激活视界';
+        showFloatMessage('🗑️ 存档已删除，游戏已重置', 'system');
     }
 });
 // ============================================================
@@ -1928,7 +1950,11 @@ function loadGame() {
         bossDefeated = data.bossDefeated || false;
         trees = data.trees || [];
         extraObjects = data.extraObjects || [];
-        campfire = data.campfire || { x: WORLD_W/2, y: WORLD_H/2, frame: 0 };
+        let cf = data.campfire;
+if (!cf || (cf.x === 0 && cf.y === 0) || typeof cf.x !== 'number') {
+    cf = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
+}
+campfire = cf;
         renderAll();
         updateHealthBar();
         document.getElementById('eyeBtn').className = STATE.hasPaid ? 'btn-eye paid' : 'btn-eye';
@@ -3073,9 +3099,9 @@ function initGameCanvas() {
     if (trees.length === 0) generateTrees();
     if (extraObjects.length === 0) generateExtraTerrain();
     // 篝火如果未定义则设置默认值
-    if (!campfire || campfire.x === undefined) {
-        campfire = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
-    }
+   if (!campfire || campfire.x === undefined || (campfire.x === 0 && campfire.y === 0)) {
+    campfire = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
+}
     STATE.pos.x = STATE.pos.x || WORLD_W * 0.5;
     STATE.pos.y = STATE.pos.y || WORLD_H * 0.55;
     updateCamera();
