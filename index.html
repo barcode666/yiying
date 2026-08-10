@@ -54,8 +54,8 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 .action-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:rgba(0,0,0,.15);padding:8px 12px;border-radius:10px;border:1px solid rgba(100,200,255,0.06)}
 
 /* 按钮通用样式 */
-.btn-eye,.btn-trade,.btn-chronicle,.btn-back,.btn-login,.btn-yes,.btn-no,.btn-pay-confirm,.btn-pay-cancel,.close-btn{background:rgba(20,40,70,0.4);border:1px solid rgba(100,200,255,0.15);color:#c8d8e8;padding:6px 18px;border-radius:40px;font-size:14px;font-weight:500;cursor:pointer;transition:.2s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);flex-shrink:0;line-height:1.4}
-.btn-eye:hover,.btn-trade:hover,.btn-chronicle:hover,.btn-back:hover,.btn-login:hover,.btn-yes:hover,.btn-no:hover,.btn-pay-confirm:hover,.btn-pay-cancel:hover,.close-btn:hover{background:rgba(40,100,200,0.25);border-color:#6af;box-shadow:0 0 30px rgba(50,150,255,0.15);transform:scale(1.02)}
+.btn-eye,.btn-trade,.btn-chronicle,.btn-save,.btn-back,.btn-login,.btn-yes,.btn-no,.btn-pay-confirm,.btn-pay-cancel,.close-btn{background:rgba(20,40,70,0.4);border:1px solid rgba(100,200,255,0.15);color:#c8d8e8;padding:6px 18px;border-radius:40px;font-size:14px;font-weight:500;cursor:pointer;transition:.2s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);flex-shrink:0;line-height:1.4}
+.btn-eye:hover,.btn-trade:hover,.btn-chronicle:hover,.btn-save:hover,.btn-back:hover,.btn-login:hover,.btn-yes:hover,.btn-no:hover,.btn-pay-confirm:hover,.btn-pay-cancel:hover,.close-btn:hover{background:rgba(40,100,200,0.25);border-color:#6af;box-shadow:0 0 30px rgba(50,150,255,0.15);transform:scale(1.02)}
 .btn-eye.paid{color:#6a8a7a;border-color:rgba(100,200,180,.3);cursor:default;opacity:.6}
 .btn-eye.paid:hover{background:rgba(20,40,70,0.4);box-shadow:none;transform:scale(1)}
 .btn-back{border-color:#5a3a3a;color:#b07a7a}
@@ -265,6 +265,7 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 <button class="btn-eye" id="eyeBtn">👁 激活视界</button>
 <button class="btn-trade" id="tradeBtn">🏛️ 交易行</button>
 <button class="btn-chronicle" id="chronicleBtn">📜 编年史</button>
+ <button class="btn-save" id="saveBtn">💾 存档</button>
 </div>
 <div class="hud-footer">
 <button class="btn-back" id="backBtn">✕ 关闭游戏</button>
@@ -1041,9 +1042,12 @@ document.getElementById('loginBtn').addEventListener('click', function() {
     startTransition(() => {
         switchPage('gamePage');
         loadAllImages(() => {
-            generateNewCharacter();
+            const loaded = loadGame(); // 尝试加载存档
+            if (!loaded) {
+                generateNewCharacter(); // 没有存档或加载失败则新建
+            }
             renderAll();
-            initGameCanvas();
+            initGameCanvas(); // 注意：initGameCanvas 需要支持加载的数据
             for (let i=0; i<MAX_MONSTERS; i++) spawnMonster();
             gameLoop();
             setHUDVisible(false);
@@ -1397,6 +1401,9 @@ function renderChronicle() {
 function openChronicle() { renderChronicle(); document.getElementById('chronicleOverlay').style.display = 'block'; STATE.gamePaused = true; }
 function closeChronicle() { document.getElementById('chronicleOverlay').style.display = 'none'; STATE.gamePaused = false; }
 document.getElementById('chronicleBtn').addEventListener('click', openChronicle);
+document.getElementById('saveBtn').addEventListener('click', function() {
+    saveGame();
+});
 document.getElementById('closeChronicle').addEventListener('click', closeChronicle);
 
 // ============================================================
@@ -1884,6 +1891,55 @@ document.getElementById('backBtn').addEventListener('click', function() {
         setTimeout(() => { alert('如果浏览器没有关闭，请手动关闭此标签页。'); }, 500);
     }
 });
+// ============================================================
+// 存档系统
+// ============================================================
+function saveGame() {
+    const saveData = {
+        version: 1,
+        player: STATE.player,
+        hasPaid: STATE.hasPaid,
+        job: STATE.job,
+        pos: STATE.pos,
+        chronicleRecords: chronicleRecords,
+        bossDefeated: bossDefeated,
+        trees: trees,
+        extraObjects: extraObjects,
+        campfire: campfire
+    };
+    try {
+        localStorage.setItem('chronicle_save', JSON.stringify(saveData));
+        showFloatMessage('✅ 游戏已保存', 'success');
+    } catch (e) {
+        showFloatMessage('⚠️ 保存失败，可能存储空间不足', 'fail');
+    }
+}
+
+function loadGame() {
+    const raw = localStorage.getItem('chronicle_save');
+    if (!raw) return false;
+    try {
+        const data = JSON.parse(raw);
+        STATE.player = data.player;
+        STATE.hasPaid = data.hasPaid;
+        STATE.job = data.job || '散人';
+        STATE.pos = data.pos;
+        chronicleRecords = data.chronicleRecords || [];
+        bossDefeated = data.bossDefeated || false;
+        trees = data.trees || [];
+        extraObjects = data.extraObjects || [];
+        campfire = data.campfire || { x: WORLD_W/2, y: WORLD_H/2, frame: 0 };
+        renderAll();
+        updateHealthBar();
+        document.getElementById('eyeBtn').className = STATE.hasPaid ? 'btn-eye paid' : 'btn-eye';
+        document.getElementById('eyeBtn').textContent = STATE.hasPaid ? '✅ 已激活' : '👁 激活视界';
+        showFloatMessage('📂 存档加载成功', 'system');
+        return true;
+    } catch (e) {
+        showFloatMessage('⚠️ 存档损坏', 'fail');
+        return false;
+    }
+}
 
 // ============================================================
 // 2D场景（碰撞、移动、绘制等）
@@ -3013,12 +3069,15 @@ function initGameCanvas() {
     ctx = canvas.getContext('2d');
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    generateTrees();
-        extraObjects = []; // 确保清空
-    generateExtraTerrain(); // 生成草坑、草坡、草路
-    campfire = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
-    STATE.pos.x = WORLD_W * 0.5;
-    STATE.pos.y = WORLD_H * 0.55;
+    // 如果 trees 或 extraObjects 为空，则生成（否则使用已有数据）
+    if (trees.length === 0) generateTrees();
+    if (extraObjects.length === 0) generateExtraTerrain();
+    // 篝火如果未定义则设置默认值
+    if (!campfire || campfire.x === undefined) {
+        campfire = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
+    }
+    STATE.pos.x = STATE.pos.x || WORLD_W * 0.5;
+    STATE.pos.y = STATE.pos.y || WORLD_H * 0.55;
     updateCamera();
     initMouseAttack();
 }
