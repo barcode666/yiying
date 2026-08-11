@@ -134,12 +134,16 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 
 /* 成就 */
 #achievementOverlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:80;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);justify-content:center;align-items:center;cursor:pointer}
-#achievementOverlay .achievement-box{background:rgba(10,18,30,0.8);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:2px solid rgba(255,255,255,0.2);border-radius:24px;padding:50px 60px;max-width:600px;width:80%;text-align:center;box-shadow:0 20px 80px rgba(0,0,0,.8);animation:achievementPop .5s cubic-bezier(.34,1.56,.64,1)}
+#achievementOverlay .achievement-box{background:rgba(10,18,30,0.8);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:2px solid rgba(255,255,255,0.2);border-radius:20px;padding:24px 32px;max-width:420px;width:65%;text-align:center;box-shadow:0 20px 80px rgba(0,0,0,.8);animation:achievementPop .5s cubic-bezier(.34,1.56,.64,1)}
+#achievementOverlay .achievement-box .icon{font-size:28px;margin-bottom:4px;}
+#achievementOverlay .achievement-box .title{font-size:18px;font-weight:300;color:#ffd700;letter-spacing:2px;margin-bottom:4px;}
+#achievementOverlay .achievement-box .desc{font-size:12px;color:#e8f0ff;letter-spacing:1px;margin-bottom:8px;}
+#achievementOverlay .achievement-box .hint{font-size:10px;color:#5a7a8a;letter-spacing:1px;border-top:1px solid rgba(255,255,255,.05);padding-top:8px;}
 @keyframes achievementPop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
-#achievementOverlay .achievement-box .icon{font-size:64px;margin-bottom:10px}
-#achievementOverlay .achievement-box .title{font-size:36px;font-weight:300;color:#ffd700;letter-spacing:4px;margin-bottom:10px}
-#achievementOverlay .achievement-box .desc{font-size:20px;color:#e8f0ff;letter-spacing:2px;margin-bottom:20px}
-#achievementOverlay .achievement-box .hint{font-size:14px;color:#5a7a8a;letter-spacing:2px;border-top:1px solid rgba(255,255,255,.05);padding-top:20px}
+#achievementOverlay .achievement-box .icon{font-size:28px;margin-bottom:4px}
+#achievementOverlay .achievement-box .title{font-size:18px;font-weight:300;color:#ffd700;letter-spacing:2px;margin-bottom:4px}
+#achievementOverlay .achievement-box .desc{font-size:12px;color:#e8f0ff;letter-spacing:1px;margin-bottom:8px}
+#achievementOverlay .achievement-box .hint{font-size:10px;color:#5a7a8a;letter-spacing:1px;border-top:1px solid rgba(255,255,255,.05);padding-top:8px}
 
 /* 视频、音效、摇杆 */
 #achievementVideo{position:absolute;top:0;left:0;width:100%;height:100%;z-index:45;display:none;object-fit:contain;background:#000}
@@ -238,9 +242,9 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 <div id="menuButton" onclick="toggleHUD()"><span class="gear-icon">⚙</span><span class="esc-label">ESC</span></div>
 <div id="joystickZone"><div id="joystickBase"><div id="joystickKnob"></div></div></div>
 <!-- 技能图标按钮（右下角） -->
-<div id="skillIconContainer" style="position:absolute; bottom:180px; right:24px; z-index:15; width:120px; height:120px; border-radius:50%; border:none; background:rgba(0,0,0,0.3); cursor:pointer; overflow:hidden; display:flex; align-items:center; justify-content:center; pointer-events:auto;" onclick="useSkill()">
+<div id="skillIconContainer" style="position:absolute; bottom:160px; right:30px; z-index:15; width:80px; height:80px; border-radius:50%; border:none; background:rgba(0,0,0,0.15); cursor:pointer; overflow:hidden; display:flex; align-items:center; justify-content:center; pointer-events:auto; touch-action:manipulation;" onclick="useSkill(event)" ontouchstart="useSkill(event); return false;">
     <img id="skillIconImg" src="assets/skill/90.webp" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none';">
-    <div id="skillCooldownOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; color:#fff; font-size:32px; font-weight:bold;">8</div>
+    <div id="skillCooldownOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; color:#fff; font-size:20px; font-weight:bold;">8</div>
 </div>
 <!-- 玩家状态：头像 + 血条 -->
 <div id="playerStatus" style="position:absolute; top:16px; left:70px; z-index:15; display:flex; align-items:center; gap:10px; pointer-events:none;">
@@ -307,7 +311,7 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 <div class="pay-dialog-box">
 <div class="icon">👁</div>
 <div class="title">观测权限</div>
-<div class="price">¥ 6</div>
+<div class="price"></div>
 <div class="buttons">
 <button class="btn-pay-confirm" id="payConfirmBtn">🔓 激活</button>
 <button class="btn-pay-cancel" id="payCancelBtn">✕ 取消</button>
@@ -341,7 +345,7 @@ body{background:#0a0c10;width:100vw;height:100dvh;overflow:hidden;display:flex;j
 // 全局状态 & 动画ID
 // ============================================================
 const PATH_THRESHOLD = 0.5;
-
+const EXIT_RANGE = 80;
 // 判断世界坐标 (wx, wy) 是否在草地上（即非黄土）
 function isGrass(wx, wy) {
     const col = Math.floor(wx / TILE_SIZE);
@@ -376,6 +380,7 @@ const DUNGEON = {
     height: 550,
     x: 0, y: 0,  // 房间左上角世界坐标（实际不用，因为房间是独立的）
     exitX: 650, exitY: 500, // 出口位置（房间内坐标）
+
 };
 let inDungeon = false;       // 是否在副本中
 let savedWorldPos = null;    // 保存进入前的位置
@@ -1160,17 +1165,18 @@ document.addEventListener('keydown', function(e) {
 if (e.key === 'f' || e.key === 'F') {
     e.preventDefault();
     if (STATE.gamePaused) return;   // 防止在对话框、编年史等打开时误触
-    // ---- 副本内出口检测 ----
-    if (inDungeon) {
-        const dx = STATE.pos.x - DUNGEON.exitX;
-        const dy = STATE.pos.y - DUNGEON.exitY;
-        if (Math.sqrt(dx*dx + dy*dy) < 50) {
-            exitDungeon();
-        } else {
-            showFloatMessage('走到出口传送阵处按 F 离开', 'system');
-        }
-        return; // 副本内不执行其他交互
+    // ---- 副本内出口检测（Boss 尸体处） ----
+if (inDungeon && dungeonBoss && dungeonBoss.state === 'dead') {
+    const dx = STATE.pos.x - dungeonBoss.x;
+    const dy = STATE.pos.y - dungeonBoss.y;
+    if (Math.sqrt(dx*dx + dy*dy) < EXIT_RANGE) {
+        exitDungeon();
+        return;
+    } else {
+        showFloatMessage('走到 Boss 尸体处按 F 退出', 'system');
+        return;
     }
+}
 // ---- 仓库交互 ----
 if (STATE.nearBuilding && STATE.nearBuilding.type === 'warehouse') {
     if (STATE.job === '启示者' && chronicleRecords.length > 0) {
@@ -1261,7 +1267,13 @@ document.addEventListener('keyup', function(e) {
 // ============================================================
 function toggleHUD() { setHUDVisible(!STATE.hudVisible); }
 function setHUDVisible(v) { STATE.hudVisible = v; STATE.gamePaused = v; document.getElementById('hudOverlay').classList.toggle('visible', v); }
-function useSkill() {
+function useSkill(event) {
+    // 阻止事件冒泡，防止干扰摇杆
+    if (event) {
+        event.stopPropagation();
+        if (event.cancelable) event.preventDefault();
+    }
+
     if (STATE.skillAnimating) return;
     if (!STATE.skill.fireball.unlocked) {
         showFloatMessage('❌ 技能未解锁', 'fail');
@@ -1273,27 +1285,16 @@ function useSkill() {
     }
     if (STATE.isKnockdown) return;
 
-    // ---- 计算技能释放位置（玩家前方偏移） ----
     const offsetDist = 60;
-let ox = 0, oy = 0;
-switch (STATE.facingDir) {
-    case 'down':  
-        oy = offsetDist; 
-        break;
-    case 'up':    
-        oy = -offsetDist - 20; 
-        break;
-    case 'right': 
-        ox = offsetDist; 
-        oy = -15; // 向上偏移 15 像素
-        break;
-    case 'left':  
-        ox = -offsetDist; 
-        oy = -15; // 向上偏移 15 像素
-        break;
-}
-STATE.skillX = STATE.pos.x + ox;
-STATE.skillY = STATE.pos.y + oy;
+    let ox = 0, oy = 0;
+    switch (STATE.facingDir) {
+        case 'down':  oy = offsetDist; break;
+        case 'up':    oy = -offsetDist - 20; break;
+        case 'right': ox = offsetDist; oy = -15; break;
+        case 'left':  ox = -offsetDist; oy = -15; break;
+    }
+    STATE.skillX = STATE.pos.x + ox;
+    STATE.skillY = STATE.pos.y + oy;
 
     STATE.skillAnimating = true;
     STATE.skillFrame = 0;
@@ -1364,7 +1365,6 @@ function generateNewCharacter() {
     // ---- 重置 player 对象，避免残留 ----
     STATE.player = {
         name: '无名旅者',
-        stats: { 筋骨: 0, 智谋: 0, 体魄: 0 },
         trait: null,
         traitLocked: true,
         job: '散人',
@@ -1743,6 +1743,40 @@ function closeDialog() {
     STATE.gamePaused = false;
 }
 // ============================================================
+// 通用确认对话框
+// ============================================================
+function showConfirmDialog(title, message, onYes, onNo) {
+    // 使用毛玻璃背景（类似交易行）
+    document.querySelector('#dialogOverlay .dialog-bg').style.backgroundImage = 'none';
+    document.querySelector('#dialogOverlay .dialog-content').style.background = 'rgba(10,18,30,0.7)';
+    document.querySelector('#dialogOverlay .dialog-content').style.backdropFilter = 'blur(16px)';
+    document.querySelector('#dialogOverlay .dialog-content').style.border = '1px solid rgba(255,255,255,0.15)';
+    document.querySelector('#dialogOverlay .dialog-title').innerHTML = title || '⚠️ 确认';
+    
+    const qHTML = `<div style="font-size:18px;color:#e8f0ff;margin:10px 0;">${message}</div>`;
+    document.querySelector('#dialogOverlay .dialog-question').innerHTML = qHTML;
+    
+    const yesBtn = document.getElementById('dialogYes');
+    const noBtn = document.getElementById('dialogNo');
+    yesBtn.style.display = 'inline-block';
+    yesBtn.textContent = '确认删除';
+    yesBtn.className = 'btn-yes';
+    yesBtn.onclick = function() {
+        closeDialog();
+        if (typeof onYes === 'function') onYes();
+    };
+    noBtn.style.display = 'inline-block';
+    noBtn.textContent = '取消';
+    noBtn.className = 'btn-no';
+    noBtn.onclick = function() {
+        closeDialog();
+        if (typeof onNo === 'function') onNo();
+    };
+    
+    document.getElementById('dialogOverlay').style.display = 'block';
+    STATE.gamePaused = true;
+}
+// ============================================================
 // 篝火转职（新增）
 // ============================================================
 function openCampfireDialog() {
@@ -1823,7 +1857,8 @@ playAchievement(
     }, 
     true,   // 显示弹窗
     '✦ 转职成功 ✦',  // 自定义标题
-    '你已成为「启示者」，智谋永久 +10'  // 自定义描述
+    '你已成为「启示者」，智谋 +10 '  // 自定义描述
+    
 );
 
 // 注意：这里不要再调用 showFloatMessage，因为弹窗已经显示内容了
@@ -1831,7 +1866,7 @@ playAchievement(
         closeDialog();
 
         // 5. 显示消息
-        showFloatMessage('✨ 你已成为「启示者」，智谋+10！', 'milestone');
+        showFloatMessage('✨ 你已成为「启示者」，智谋+10！<br>已习得「豪火球之术」！', 'milestone');
     false};
 
     noBtn.onclick = function() {
@@ -2087,48 +2122,54 @@ function closeTrade() {
 // 关闭游戏
 // ============================================================
 document.getElementById('backBtn').addEventListener('click', function() {
-    if (confirm('⚠️ 确定要删除所有存档数据吗？\n此操作不可恢复！')) {
-        // 清除 localStorage 存档
-        localStorage.removeItem('chronicle_save');
-        // 重置游戏状态
-        bossDefeated = false;
-        chronicleRecords = [];
-        STATE.player.hp = STATE.player.maxHp;
-        STATE.player.stats = { 筋骨: 0, 智谋: 0, 体魄: 0 };
-        STATE.job = '散人';
-        STATE.hasPaid = false;
-        STATE.player.traitLocked = true;
-        STATE.pos.x = WORLD_W / 2;
-        STATE.pos.y = WORLD_H / 2;
-        // 重置地形（重新生成）
-        trees = [];
-        extraObjects = [];
-        generateTrees();
-        generateExtraTerrain();
-        // 更新 UI
-        renderAll();
-        updateHealthBar();
-        document.getElementById('eyeBtn').className = 'btn-eye';
-        document.getElementById('eyeBtn').textContent = '👁 激活视界';
-        showFloatMessage('🗑️ 存档已删除，游戏已重置', 'system');
-    }
+    showConfirmDialog(
+        '⚠️ 删除存档',
+        '确定要删除所有存档数据吗？<br>此操作不可恢复！',
+        function() { // 确认删除
+            localStorage.removeItem('chronicle_save');
+
+            // 重置所有状态
+            bossDefeated = false;
+            chronicleRecords = [];
+            // 重置技能
+            STATE.skill = { fireball: { unlocked: false, cooldown: 0, maxCooldown: 480 } };
+            updateSkillIconVisibility();
+            // 重新生成角色（包括随机属性）
+            generateNewCharacter();
+            // 重置地形
+            trees = [];
+            extraObjects = [];
+            generateTrees();
+            generateExtraTerrain();
+            // 更新 UI
+            renderAll();
+            updateHealthBar();
+            document.getElementById('eyeBtn').className = 'btn-eye';
+            document.getElementById('eyeBtn').textContent = '👁 激活视界';
+            showFloatMessage('🗑️ 存档已删除，游戏已重置', 'system');
+        },
+        function() { // 取消删除
+            showFloatMessage('已取消删除', 'system');
+        }
+    );
 });
 // ============================================================
 // 存档系统
 // ============================================================
 function saveGame() {
     const saveData = {
-        version: 1,
-        player: STATE.player,
-        hasPaid: STATE.hasPaid,
-        job: STATE.job,
-        pos: STATE.pos,
-        chronicleRecords: chronicleRecords,
-        bossDefeated: bossDefeated,
-        trees: trees,
-        extraObjects: extraObjects,
-        campfire: campfire
-    };
+    version: 1,
+    player: STATE.player,
+    hasPaid: STATE.hasPaid,
+    job: STATE.job,
+    pos: STATE.pos,
+    chronicleRecords: chronicleRecords,
+    bossDefeated: bossDefeated,
+    trees: trees,
+    extraObjects: extraObjects,
+    campfire: campfire,
+    skill: STATE.skill  // 新增
+};
     try {
         localStorage.setItem('chronicle_save', JSON.stringify(saveData));
         showFloatMessage('✅ 游戏已保存', 'success');
@@ -2178,9 +2219,17 @@ function loadGame() {
             cf = { x: WORLD_W / 2, y: WORLD_H / 2, frame: 0 };
         }
         campfire = cf;
+        // 恢复技能状态
+if (data.skill) {
+    STATE.skill = data.skill;
+} else {
+    // 如果没有存档技能数据，使用默认值
+    STATE.skill = { fireball: { unlocked: false, cooldown: 0, maxCooldown: 480 } };
+}
         // 确保玩家名称
         document.getElementById('playerNameLabel').textContent = STATE.player.name || '无名旅者';
         renderAll();
+        updateSkillIconVisibility();
         updateHealthBar();
         document.getElementById('eyeBtn').className = STATE.hasPaid ? 'btn-eye paid' : 'btn-eye';
         document.getElementById('eyeBtn').textContent = STATE.hasPaid ? '✅ 已激活' : '👁 激活视界';
@@ -2245,11 +2294,11 @@ function tryMove(px, py, dx, dy) {
 
     // 建筑碰撞
     for (const b of BUILDINGS) {
-        if (rectCircleCollide(b.x, b.y, b.w, b.h, testX, py, r)) {
-            collide = true;
-            break;
-        }
+    if (rectCircleCollide(b.x + 4, b.y + 4, b.w - 8, b.h - 8, testX, py, r)) {
+        collide = true;
+        break;
     }
+}
 
     // 树木碰撞
     if (!collide) {
@@ -2281,11 +2330,11 @@ function tryMove(px, py, dx, dy) {
 
     // 建筑碰撞
     for (const b of BUILDINGS) {
-        if (rectCircleCollide(b.x, b.y, b.w, b.h, finalX, testY, r)) {
-            collide = true;
-            break;
-        }
+    if (rectCircleCollide(b.x + 4, b.y + 4, b.w - 8, b.h - 8, finalX, testY, r)) {
+        collide = true;
+        break;
     }
+}
 
     // 树木碰撞
     if (!collide) {
@@ -2396,28 +2445,23 @@ function attackMonsters() {
     }
 
     // ---- 攻击Boss（副本内） ----
-    if (inDungeon && dungeonBoss) {
-        // 如果 Boss 已经死亡或正在死亡，不处理攻击
-        if (dungeonBoss.state === 'dying' || dungeonBoss.state === 'dead') return;
-
-        const boss = dungeonBoss;
-        const dx = boss.x - player.x;
-        const dy = boss.y - player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 80) {
-            const damage = 10 + Math.floor(Math.random() * 11);
-            boss.hp -= damage;
-            showFloatMessage(`⚔️ Boss 受到 ${damage} 点伤害！`, 'system');
-            if (boss.hp <= 0) {
-                boss.hp = 0;
-                boss.state = 'dying';
-                boss.deathTimer = 0;
-                showFloatMessage('🏆 Boss 被击败！', 'milestone');
-                // 不再立即退出，等死亡动画播完
-                // 奖励将在 gameLoop 中发放
-            }
+if (inDungeon && dungeonBoss && dungeonBoss.state === 'alive') {
+    const boss = dungeonBoss;
+    const dx = boss.x - player.x;
+    const dy = boss.y - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 80) {
+        const damage = 10 + Math.floor(Math.random() * 11);
+        boss.hp -= damage;
+        showFloatMessage(`⚔️ Boss 受到 ${damage} 点伤害！`, 'system');
+        if (boss.hp <= 0) {
+            boss.hp = 0;
+            boss.state = 'dying';
+            boss.deathTimer = 0;
+            showFloatMessage('🏆 Boss 被击败！', 'milestone');
         }
     }
+}
 }
 function triggerPlayerDeath() {
      if (STATE.isKnockdown) return; // 防止重复触发
@@ -2880,34 +2924,7 @@ function drawDungeon() {
     ctx.fillRect(offsetX + 10, offsetY + DUNGEON.height - 10 - pillar, pillar, pillar);
     ctx.fillRect(offsetX + DUNGEON.width - 10 - pillar, offsetY + DUNGEON.height - 10 - pillar, pillar, pillar);
 
-    // 5. 出口传送阵（右下角）加偏移
-    const ex = DUNGEON.exitX, ey = DUNGEON.exitY;
-    ctx.fillStyle = 'rgba(0, 200, 255, 0.2)';
-    ctx.beginPath();
-    ctx.arc(offsetX + ex + 20, offsetY + ey + 20, 35, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#aaf';
-    ctx.font = '18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('⬆ 出口', offsetX + ex + 20, offsetY + ey - 10);
-
-    // ---- 检测玩家是否在出口附近 ----
-    const dxExit = STATE.pos.x - (ex + 20);
-    const dyExit = STATE.pos.y - (ey + 20);
-    const distExit = Math.sqrt(dxExit * dxExit + dyExit * dyExit);
-    if (distExit < 50) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(offsetX + ex - 10, offsetY + ey + 30, 60, 24);
-        ctx.fillStyle = '#aaf';
-        ctx.font = '16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('按 F 退出', offsetX + ex + 20, offsetY + ey + 48);
-    }
+    
 
     // 6. Boss（加偏移）
 if (dungeonBoss) {
@@ -2972,6 +2989,21 @@ if (dungeonBoss) {
         ctx.fillText('⚔ 暗影守卫', offsetX + bx, offsetY + by - 72);
     }
 }
+    // ---- Boss 尸体交互（出口） ----
+if (dungeonBoss && dungeonBoss.state === 'dead') {
+    const b = dungeonBoss;
+    const dx = STATE.pos.x - b.x;
+    const dy = STATE.pos.y - b.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < EXIT_RANGE) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(offsetX + b.x - 55, offsetY + b.y - 75, 110, 28);
+        ctx.fillStyle = '#aaf';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('按 F 或点击此处退出', offsetX + b.x, offsetY + b.y - 56);
+    }
+}
 // ---- 绘制技能特效（副本内） ----
     if (STATE.skillAnimating && IMG.fireball && IMG.fireball.complete) {
         const frameW = IMG.fireball.frameWidth || 64;
@@ -2993,6 +3025,7 @@ ctx.rotate(angle);
 ctx.drawImage(IMG.fireball, sx, sy, frameW, frameH, -drawW/2, -drawH/2, drawW, drawH);
 ctx.restore();
     }
+
     // 7. 玩家（副本内绘制）
     const px = STATE.pos.x, py = STATE.pos.y;
     updateAnimation();
@@ -3204,75 +3237,74 @@ function gameLoop() {
         updateMonsters();
         if (STATE.attackCooldown > 0) STATE.attackCooldown--;
 
-        // ---- Boss AI（副本内） ----
-        if (inDungeon && dungeonBoss && dungeonBoss.hp > 0) {
-            const boss = dungeonBoss;
-            const dx = STATE.pos.x - boss.x;
-            const dy = STATE.pos.y - boss.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            // Boss 向玩家移动
-            // Boss 全图追踪，只要距离大于 40 就移动（防止重叠）
-if (dist > 40) {
-    boss.x += (dx / dist) * 0.5;
-    boss.y += (dy / dist) * 0.5;
-    // 更新 Boss 朝向（面向玩家）
-    if (Math.abs(dx) > Math.abs(dy)) {
-        boss.facingDir = dx > 0 ? 'right' : 'left';
-    } else {
-        boss.facingDir = dy > 0 ? 'down' : 'up';
+     // ---- Boss AI（副本内） ----
+if (inDungeon && dungeonBoss && dungeonBoss.state === 'alive') {
+    const boss = dungeonBoss;
+    const dx = STATE.pos.x - boss.x;
+    const dy = STATE.pos.y - boss.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Boss 移动
+    if (dist > 40) {
+        boss.x += (dx / dist) * 0.5;
+        boss.y += (dy / dist) * 0.5;
+        // 朝向更新
+        if (Math.abs(dx) > Math.abs(dy)) {
+            boss.facingDir = dx > 0 ? 'right' : 'left';
+        } else {
+            boss.facingDir = dy > 0 ? 'down' : 'up';
+        }
+    }
+    // Boss 攻击
+    if (dist < 60 && (boss.attackCooldown === undefined || boss.attackCooldown <= 0)) {
+        const damage = 10 + Math.floor(Math.random() * 11);
+        STATE.player.hp -= damage;
+        showFloatMessage(`💢 Boss 造成 ${damage} 点伤害！`, 'fail');
+        boss.attackCooldown = 120 + Math.floor(Math.random() * 30);
+        boss.isAttacking = true;
+        boss.attackTimer = 0;
+        // 攻击时也更新朝向
+        if (Math.abs(dx) > Math.abs(dy)) {
+            boss.facingDir = dx > 0 ? 'right' : 'left';
+        } else {
+            boss.facingDir = dy > 0 ? 'down' : 'up';
+        }
+        updateHealthBar();
+        if (STATE.player.hp <= 0) {
+            triggerPlayerDeath();
+        }
+    }
+    // 冷却递减
+    if (boss.attackCooldown !== undefined && boss.attackCooldown > 0) {
+        boss.attackCooldown--;
     }
 }
 
-            // Boss 攻击
-            if (dist < 60 && (boss.attackCooldown === undefined || boss.attackCooldown <= 0)) {
-                const damage = 10 + Math.floor(Math.random() * 11);
-                STATE.player.hp -= damage;
-                showFloatMessage(`💢 Boss 造成 ${damage} 点伤害！`, 'fail');
-                boss.attackCooldown = 120 + Math.floor(Math.random() * 30);
-                boss.isAttacking = true;
-                boss.attackTimer = 0;
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    boss.facingDir = dx > 0 ? 'right' : 'left';
-                } else {
-                    boss.facingDir = dy > 0 ? 'down' : 'up';
-                }
-                updateHealthBar();
-                if (STATE.player.hp <= 0) {
-                    triggerPlayerDeath();
-                }
-            }
-            if (boss.attackCooldown !== undefined && boss.attackCooldown > 0) {
-                boss.attackCooldown--;
-            }
-        }
-
-        // ---- Boss 死亡动画 & 攻击动画计时（独立于 hp > 0） ----
-        // ---- Boss 死亡动画 ----
+// ---- Boss 死亡动画 & 攻击动画计时（独立于 alive） ----
 if (inDungeon && dungeonBoss) {
+    // 死亡动画
     if (dungeonBoss.state === 'dying') {
         dungeonBoss.deathTimer++;
         if (dungeonBoss.deathTimer >= 40) {
             dungeonBoss.state = 'dead';
-            bossDefeated = true; // 标记为已击败
+            bossDefeated = true;
             if (!dungeonBoss._rewardGiven) {
                 dungeonBoss._rewardGiven = true;
                 STATE.player.stats.智谋 += 5;
                 renderStats();
                 showFloatMessage('✨ 你获得了 Boss 的宝藏，智谋 +5！', 'milestone');
-                showFloatMessage('🗝️ 前往魔法阵处按 F 退出', 'system');
-            }
-                    // 不再自动退出
-                }
-            }
-            // 攻击动画计时
-            if (dungeonBoss.isAttacking) {
-                dungeonBoss.attackTimer++;
-                if (dungeonBoss.attackTimer >= 30) {
-                    dungeonBoss.isAttacking = false;
-                    dungeonBoss.attackTimer = 0;
-                }
+                showFloatMessage('🗝️ 点击尸体或按 F 退出', 'system');
             }
         }
+    }
+    // 攻击动画计时
+    if (dungeonBoss.isAttacking) {
+        dungeonBoss.attackTimer++;
+        if (dungeonBoss.attackTimer >= 30) {
+            dungeonBoss.isAttacking = false;
+            dungeonBoss.attackTimer = 0;
+        }
+    }
+}
     // ---- 技能冷却递减 ----
     if (STATE.skill.fireball.cooldown > 0) {
         STATE.skill.fireball.cooldown--;
@@ -3312,25 +3344,35 @@ if (inDungeon && dungeonBoss) {
 // 鼠标左键攻击
 // ============================================================
 function initMouseAttack() {
-    // 移除旧监听（避免重复绑定）
     canvas.removeEventListener('click', initMouseAttack._handler);
-    // 定义新处理函数
     const handler = function(e) {
         if (STATE.gamePaused) return;
 
-        // 计算画布上的像素坐标
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         const mx = (e.clientX - rect.left) * scaleX;
         const my = (e.clientY - rect.top) * scaleY;
 
-        // ---- 副本内 ----
+        // ---- 副本内处理 ----
         if (inDungeon) {
+            // 点击 Boss 尸体退出
+            if (dungeonBoss && dungeonBoss.state === 'dead') {
+                const offsetX = (canvasW - DUNGEON.width) / 2;
+                const offsetY = (canvasH - DUNGEON.height) / 2;
+                const bossScreenX = offsetX + dungeonBoss.x;
+                const bossScreenY = offsetY + dungeonBoss.y;
+                const dx = mx - bossScreenX;
+                const dy = my - bossScreenY;
+                if (Math.sqrt(dx*dx + dy*dy) < 80) {
+                    exitDungeon();
+                    return;
+                }
+            }
+
             if (STATE.isAttacking || STATE.isKnockdown) return;
             STATE.isAttacking = true;
             STATE.attackTimer = 0;
-            // 副本内直接使用像素坐标（因为 drawDungeon 从 (0,0) 绘制，无 camera 偏移）
             const dx = mx - STATE.pos.x;
             const dy = my - STATE.pos.y;
             const angle = Math.atan2(dy, dx);
@@ -3348,38 +3390,39 @@ function initMouseAttack() {
             return;
         }
 
-        // ---- 主世界 ----
+        // ---- 主世界处理 ----
         const wx = mx + camera.x;
         const wy = my + camera.y;
-// ---- 检测是否点击了篝火 ----
+
+        // 检测篝火点击
         const dxFire = wx - campfire.x;
         const dyFire = wy - campfire.y;
         if (Math.sqrt(dxFire * dxFire + dyFire * dyFire) < 50) {
             if (!inDungeon) {
                 openCampfireDialog();
-                return; // 阻止后续攻击和建筑交互
+                return;
             }
         }
-        // 检测是否点击了建筑
+
+        // 检测建筑点击
         let buildingClicked = false;
-for (const b of BUILDINGS) {
-    if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
-        buildingClicked = true;
-        if (b.type === 'blacksmith') {
-            openDialog();
-        } else if (b.type === 'warehouse') {
-            // 仓库交互：条件与 F 键一致
-            if (STATE.job === '启示者' && chronicleRecords.length > 0) {
-                enterDungeon();
-            } else {
-                showFloatMessage('❌ 需要完成至少一次事件并转职为「启示者」', 'fail');
+        for (const b of BUILDINGS) {
+            if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
+                buildingClicked = true;
+                if (b.type === 'blacksmith') {
+                    openDialog();
+                } else if (b.type === 'warehouse') {
+                    if (STATE.job === '启示者' && chronicleRecords.length > 0) {
+                        enterDungeon();
+                    } else {
+                        showFloatMessage('❌ 需要完成至少一次事件并转职为「启示者」', 'fail');
+                    }
+                } else {
+                    showFloatMessage('你来到了 ' + b.label, 'system');
+                }
+                break;
             }
-        } else {
-            showFloatMessage('你来到了 ' + b.label, 'system');
         }
-        break;
-    }
-}
 
         if (!buildingClicked) {
             if (STATE.isAttacking || STATE.isKnockdown) return;
@@ -3401,11 +3444,9 @@ for (const b of BUILDINGS) {
             STATE.attackCooldown = 15;
         }
     };
-    // 保存引用以便移除
     initMouseAttack._handler = handler;
     canvas.addEventListener('click', handler);
 }
-
 // ============================================================
 // 初始化
 // ============================================================
